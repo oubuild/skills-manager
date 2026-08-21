@@ -3,6 +3,7 @@
 
 支持源：Hermes / Claude / Codex / Cursor / Shared(~/.agents)。
 同一真身被多个源软链引用时合并为一条记录，挂多个 agent 徽章。
+跨平台：macOS/Linux 用符号链接；Windows 用 Junction（mklink /J，免管理员）。
 """
 import base64
 import json
@@ -16,6 +17,14 @@ from pathlib import Path
 from urllib.parse import urlparse, unquote
 
 HOME = Path.home()
+IS_WINDOWS = os.name == "nt"
+
+# Windows 下 hermes CLI 可能输出 GBK，统一按 UTF-8 解码并容错
+def _run(cmd, timeout):
+    return subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout,
+        encoding="utf-8", errors="replace",
+    )
 # ---------------- 多源注册表 ----------------
 AGENT_ORDER = ["Hermes", "Claude", "Codex", "Cursor", "Shared"]
 SOURCES = {
@@ -72,7 +81,7 @@ def parse_frontmatter(text):
 
 def load_usage():
     try:
-        return json.loads(USAGE_FILE.read_text())
+        return json.loads(USAGE_FILE.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
@@ -80,7 +89,7 @@ def load_usage():
 def save_usage(data):
     with _usage_lock:
         tmp = USAGE_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         tmp.replace(USAGE_FILE)
 
 # ---------------- hermes CLI 元数据 ----------------
@@ -88,10 +97,7 @@ def save_usage(data):
 def hermes_skills_list():
     """解析 `hermes skills list` 表格 → {name: {source, trust, enabled, category}}"""
     try:
-        r = subprocess.run(
-            ["hermes", "skills", "list"],
-            capture_output=True, text=True, timeout=30,
-        )
+        r = _run(["hermes", "skills", "list"], 30)
         out = r.stdout
     except Exception as e:
         return {}, f"hermes CLI 不可用: {e}"
@@ -361,10 +367,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _check_updates(self):
         try:
-            r = subprocess.run(
-                ["hermes", "skills", "check"],
-                capture_output=True, text=True, timeout=60,
-            )
+            r = _run(["hermes", "skills", "check"], 60)
             out = r.stdout + r.stderr
         except Exception as e:
             return self._error(500, f"检查更新失败: {e}")
@@ -467,10 +470,7 @@ class Handler(BaseHTTPRequestHandler):
         # hermes 非软链 + hub/official 来源 → 走 CLI 卸载
         if agent == "Hermes" and not entry["is_symlink"] and item["source"] in ("official", "hub"):
             try:
-                r = subprocess.run(
-                    ["hermes", "skills", "uninstall", item["name"], "--yes"],
-                    capture_output=True, text=True, timeout=60,
-                )
+                r = _run(["hermes", "skills", "uninstall", item["name"], "--yes"], 60)
                 if r.returncode != 0:
                     return self._error(500, f"uninstall 失败: {r.stderr or r.stdout}")
                 return self._json(200, {"name": item["name"], "agent": agent,
@@ -520,7 +520,17 @@ class Handler(BaseHTTPRequestHandler):
         if target.exists() or target.is_symlink():
             return self._error(400, f"{target} 已存在，无法创建软链")
         try:
-            os.symlink(Path(item["path"]), target)
+            if IS_WINDOWS:
+                # Junction 无需管理员/开发者模式；cmd 内联 mklink /J 需要 shell
+                r = subprocess.run(
+                    f'mklink /J "{target}" "{Path(item["path"])}"',
+                    shell=True, capture_output=True, text=True,
+                    timeout=30, encoding="utf-8", errors="replace",
+                )
+                if r.returncode != 0:
+                    return self._error(500, f"创建 Junction 失败: {r.stderr or r.stdout}")
+            else:
+                os.symlink(Path(item["path"]), target)
             return self._json(200, {"name": item["name"], "agent": agent,
                                     "path": str(target), "ok": True})
         except Exception as e:
@@ -533,7 +543,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(400, "skill 名称含非法字符")
         cmd = ["hermes", "skills", "update"] + ([name] if name else [])
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            r = _run(cmd, 300)
             ok = r.returncode == 0
             return self._json(200 if ok else 500, {
                 "ok": ok,
@@ -553,10 +563,7 @@ class Handler(BaseHTTPRequestHandler):
         if not re.match(r"^[a-zA-Z0-9_\-\.\/:@?=&%]+$", identifier):
             return self._error(400, "identifier 含非法字符")
         try:
-            r = subprocess.run(
-                ["hermes", "skills", "install", identifier, "--yes"],
-                capture_output=True, text=True, timeout=180,
-            )
+            r = _run(["hermes", "skills", "install", identifier, "--yes"], 180)
             ok = r.returncode == 0
             return self._json(200 if ok else 500, {
                 "ok": ok,
