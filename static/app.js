@@ -75,10 +75,13 @@ createApp({
     const updateDialog = ref(false);  // 更新面板
     const updateResult = ref(null);   // 更新结果 {ok, name, stdout, stderr}
     const updatingName = ref('');     // 正在更新的 skill（空=全部）
+    const updating = ref(false);      // 是否正在执行更新
     const toast = ref(null);
     let toastTimer = null;
      const sources = ref([]);          // 各 agent 源统计（后端 /api/skills.sources）
-     const activeAgents = ref([]);     // 已选 agent 筛选（空 = 全部）
+    const activeAgents = ref([]);     // 已选 agent 筛选（空 = 全部）
+    const showPinned = ref(false);    // 只看已固定
+    const showArchived = ref(false);  // 只看已停用
 
     const showToast = (msg, type = 'success') => {
       toast.value = { msg, type };
@@ -101,7 +104,7 @@ createApp({
         if (d.error) throw new Error(d.error);
         skills.value = d.skills.map(s => ({ ...s, scene: sceneOf(s) }));
          sources.value = d.sources || [];
-        if (d.warning) showToast(d.warning, 'warn');
+        if (d.warning) console.warn('[skills] ' + d.warning);
       } catch (e) {
         error.value = '加载失败: ' + e.message;
       } finally {
@@ -130,6 +133,7 @@ createApp({
 
     async function doUpdate(name) {
       updatingName.value = name || '';
+      updating.value = true;
       updateResult.value = null;
       try {
         const r = await fetch('/api/update', {
@@ -150,6 +154,7 @@ createApp({
         updateResult.value = { ok: false, stderr: e.message };
       } finally {
         updatingName.value = '';
+        updating.value = false;
       }
     }
 
@@ -312,8 +317,10 @@ createApp({
       if (activeScene.value) list = list.filter(s => s.scene === activeScene.value);
       if (activeCategory.value) list = list.filter(s => s.category === activeCategory.value);
        if (activeAgents.value.length) {
-         list = list.filter(s => activeAgents.value.some(a => s.agents.includes(a)));
-       }
+        list = list.filter(s => activeAgents.value.some(a => s.agents.includes(a)));
+      }
+      if (showPinned.value) list = list.filter(s => s.pinned);
+      if (showArchived.value) list = list.filter(s => s.state === 'archived');
       const q = search.value.trim().toLowerCase();
       if (q) {
         list = list.filter(s =>
@@ -359,10 +366,10 @@ createApp({
 
     return {
       skills, loading, error, search, activeScene, activeCategory,
-       sources, activeAgents, toggleAgent,
+      sources, activeAgents, toggleAgent, showPinned, showArchived,
       detail, detailLoading, detailTab, renderedDoc, linkTargets, linkTo,
       updates, updatesLoading, installDialog, installInput, installResult, installLoading,
-      updateDialog, updateResult, updatingName, doUpdate, openUpdateDialog,
+      updateDialog, updateResult, updatingName, updating, doUpdate, openUpdateDialog,
       deleteTarget, deleteAgent, deleteLoading, toast,
       scenes, filtered, stats,
       selectScene, selectCategory, agentStyle,
@@ -381,7 +388,7 @@ createApp({
         <h1 class="text-base font-semibold tracking-tight flex items-center gap-2 shrink-0">
           <span class="text-lg">⬡</span> Skills Manager
         </h1>
-        <div class="flex-1 flex justify-center max-w-xl mx-auto">
+        <div class="absolute left-1/2 -translate-x-1/2 w-72">
           <input v-model="search" class="input w-full" placeholder="搜索 skill 名称或描述…" />
         </div>
         <div class="ml-auto flex items-center gap-2 shrink-0">
@@ -443,9 +450,11 @@ createApp({
       <!-- Main -->
       <main class="flex-1 overflow-y-auto scrollbar-thin p-6">
         <!-- Stats -->
+        <div class="text-xs text-muted-foreground mb-3">
+          共 <span class="font-semibold text-foreground">{{ stats.total }}</span> 个技能，
+          覆盖 <span class="font-semibold text-foreground">{{ sources.length }}</span> 个 Agent
+        </div>
         <div class="grid gap-3 mb-3" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
-          <div class="card p-4"><div class="text-2xl font-semibold">{{ stats.total }}</div>
-            <div class="text-xs text-muted-foreground mt-1">唯一技能数</div></div>
           <div v-for="src in sources" :key="src.agent" class="card p-4 cursor-pointer"
                :class="activeAgents.includes(src.agent) ? 'ring-2' : 'hover:ring-1'"
                style="--tw-ring-color: hsl(var(--ring));"
@@ -458,13 +467,25 @@ createApp({
           </div>
         </div>
         <div class="grid grid-cols-3 gap-3 mb-6">
-          <div class="card p-4"><div class="text-2xl font-semibold">{{ stats.pinned }}</div>
-            <div class="text-xs text-muted-foreground mt-1">已固定</div></div>
-          <div class="card p-4"><div class="text-2xl font-semibold">{{ stats.archived }}</div>
-            <div class="text-xs text-muted-foreground mt-1">已停用</div></div>
+          <div class="card p-4 cursor-pointer"
+               :class="showPinned ? 'ring-2' : 'hover:ring-1'"
+               style="--tw-ring-color: hsl(var(--ring));"
+               @click="showPinned = !showPinned">
+            <div class="text-2xl font-semibold">{{ stats.pinned }}</div>
+            <div class="text-xs text-muted-foreground mt-1">已固定</div>
+          </div>
+          <div class="card p-4 cursor-pointer"
+               :class="showArchived ? 'ring-2' : 'hover:ring-1'"
+               style="--tw-ring-color: hsl(var(--ring));"
+               @click="showArchived = !showArchived">
+            <div class="text-2xl font-semibold">{{ stats.archived }}</div>
+            <div class="text-xs text-muted-foreground mt-1">已停用</div>
+          </div>
           <div class="card p-4"><div class="text-2xl font-semibold">{{ stats.updateCount ?? '—' }}</div>
             <div class="text-xs text-muted-foreground mt-1">待更新（Hermes）</div></div>
         </div>
+
+        <hr class="mb-6 border-border" />
 
         <!-- 状态 -->
         <div v-if="loading" class="text-center py-20 text-muted-foreground">加载中…</div>
@@ -636,7 +657,13 @@ createApp({
     <template v-if="updateDialog">
       <div class="dialog-overlay" @click="updateDialog = false; updateResult = null"></div>
       <div class="dialog" style="width:min(40rem, calc(100vw - 2rem))">
-        <h3 class="text-base font-semibold mb-2">更新 Skill</h3>
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-base font-semibold">更新 Skill</h3>
+          <button v-if="updates && updates.count > 0 && !updateResult"
+                  class="btn btn-default btn-sm" @click="doUpdate('')" :disabled="updating">
+            {{ updating ? '更新中…' : '更新全部' }}
+          </button>
+        </div>
 
         <template v-if="!updateResult">
           <p v-if="updates && updates.count > 0" class="text-sm text-muted-foreground mb-1">
@@ -648,13 +675,11 @@ createApp({
               <span class="font-mono text-sm flex-1">{{ u.name }}</span>
               <span class="badge badge-outline">{{ u.source }}</span>
               <span class="badge badge-destructive">可更新</span>
-              <button class="btn btn-default btn-sm shrink-0" @click="doUpdate(u.name)">
-                更新
+              <button class="btn btn-default btn-sm shrink-0" @click="doUpdate(u.name)"
+                      :disabled="updating">
+                {{ updatingName === u.name ? '更新中…' : '更新' }}
               </button>
             </div>
-            <button class="btn btn-outline btn-sm w-full mt-1" @click="doUpdate('')">
-              更新全部
-            </button>
           </div>
           <div v-else class="text-sm text-muted-foreground py-6 text-center">
             所有 skill 已是最新 ✓
