@@ -329,6 +329,58 @@ createApp({
       activeCategory.value = activeCategory.value === cat ? '' : cat;
     }
 
+    // ---------- 应用自更新（Tauri updater 插件，仅桌面端可用） ----------
+    const appUpdate = ref(null);        // { version, body } 或 null
+    const appUpdateChecking = ref(false);
+    const appUpdateDownloading = ref(false);
+    const appUpdateProgress = ref(0);   // 0-100
+    const inTauri = typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
+
+    async function checkAppUpdate() {
+      if (!inTauri) { showToast('网页模式不支持应用更新', 'warn'); return; }
+      appUpdateChecking.value = true;
+      try {
+        const { check } = await import('@tauri-apps/plugin-updater');
+        const u = await check();
+        if (u) {
+          appUpdate.value = { version: u.version, body: u.body || '' };
+          showToast(`发现新版本 v${u.version}`);
+        } else {
+          appUpdate.value = null;
+          showToast('已是最新版本');
+        }
+      } catch (e) {
+        showToast('检查应用更新失败: ' + (e.message || e), 'error');
+      } finally {
+        appUpdateChecking.value = false;
+      }
+    }
+
+    async function installAppUpdate() {
+      if (!appUpdate.value || appUpdateDownloading.value) return;
+      appUpdateDownloading.value = true;
+      appUpdateProgress.value = 0;
+      try {
+        const { check } = await import('@tauri-apps/plugin-updater');
+        const { relaunch } = await import('@tauri-apps/plugin-process');
+        const u = await check();
+        if (!u) return;
+        let contentLength = 0, received = 0;
+        await u.downloadAndInstall((evt) => {
+          if (evt.event === 'Started') contentLength = evt.data.contentLength || 0;
+          else if (evt.event === 'Progress') {
+            received += evt.data.chunkLength;
+            if (contentLength > 0) appUpdateProgress.value = Math.round(received * 100 / contentLength);
+          }
+        });
+        // 安装完成后重启（updater 替换二进制）
+        await relaunch();
+      } catch (e) {
+        showToast('更新失败: ' + (e.message || e), 'error');
+        appUpdateDownloading.value = false;
+      }
+    }
+
     onMounted(() => {
       loadSkills();
       checkUpdates(false);
@@ -347,6 +399,8 @@ createApp({
       closeDetail: () => detail.value = null,
       closeDelete: () => { deleteTarget.value = null; deleteAgent.value = ''; },
       openExternal,
+      appUpdate, appUpdateChecking, appUpdateDownloading, appUpdateProgress, inTauri,
+      checkAppUpdate, installAppUpdate,
       SCENE_ICONS,
     };
   },
@@ -366,6 +420,9 @@ createApp({
           <button class="btn btn-outline btn-sm" @click="checkUpdates()" :disabled="updatesLoading">
             {{ updatesLoading ? '检查中…' : '检查更新' }}
             <span v-if="updates && updates.count > 0" class="badge badge-destructive ml-1">{{ updates.count }}</span>
+          </button>
+          <button v-if="inTauri" class="btn btn-outline btn-sm" @click="checkAppUpdate()" :disabled="appUpdateChecking">
+            {{ appUpdateChecking ? '检查中…' : '⬆ 应用更新' }}
           </button>
           <button class="btn btn-default btn-sm" @click="installDialog = true">+ 安装 Skill</button>
           <a href="https://github.com/oubuild/skills-manager" @click.prevent="openExternal('https://github.com/oubuild/skills-manager')"
@@ -694,6 +751,27 @@ createApp({
           <button class="btn btn-outline btn-sm" @click="installDialog = false; installResult = null">关闭</button>
           <button class="btn btn-default btn-sm" @click="doInstall" :disabled="installLoading || !installInput.trim()">
             {{ installLoading ? '安装中…' : '安装' }}
+          </button>
+        </div>
+      </div>
+    </template>
+
+    <!-- 应用更新 Dialog -->
+    <template v-if="appUpdate">
+      <div class="dialog-overlay" @click="!appUpdateDownloading && (appUpdate = null)"></div>
+      <div class="dialog">
+        <h3 class="text-base font-semibold mb-2">发现新版本 v{{ appUpdate.version }}</h3>
+        <p v-if="appUpdate.body" class="text-sm text-muted-foreground mb-3 whitespace-pre-wrap">{{ appUpdate.body }}</p>
+        <div v-if="appUpdateDownloading" class="mb-4">
+          <div class="h-2 rounded-full bg-secondary overflow-hidden">
+            <div class="h-full bg-zinc-900 transition-all" :style="{ width: appUpdateProgress + '%' }"></div>
+          </div>
+          <p class="text-xs text-muted-foreground mt-1">下载中… {{ appUpdateProgress }}%</p>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button class="btn btn-outline btn-sm" @click="appUpdate = null" :disabled="appUpdateDownloading">稍后</button>
+          <button class="btn btn-default btn-sm" @click="installAppUpdate()" :disabled="appUpdateDownloading">
+            {{ appUpdateDownloading ? '更新中…' : '立即更新并重启' }}
           </button>
         </div>
       </div>

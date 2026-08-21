@@ -58,10 +58,12 @@ jobs:
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
-      - name: Build Tauri app
+      - name: Build Tauri app (signed for updater)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: .
           tauriScript: npx tauri
@@ -74,7 +76,8 @@ jobs:
         run: |
           mkdir -p dist
           cp src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg dist/
-          cp src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz dist/ || true
+          cp src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz dist/
+          cp src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig dist/
           ls -la dist/
 
       - name: Collect artifacts (Windows)
@@ -83,7 +86,11 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi dist/
+          Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi.zip dist/ -ErrorAction SilentlyContinue
+          Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi.zip.sig dist/ -ErrorAction SilentlyContinue
           Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe dist/ -ErrorAction SilentlyContinue
+          Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe.zip dist/ -ErrorAction SilentlyContinue
+          Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe.zip.sig dist/ -ErrorAction SilentlyContinue
           Get-ChildItem dist
 
       - name: Collect artifacts (Linux)
@@ -93,6 +100,8 @@ jobs:
           mkdir -p dist
           cp src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb dist/
           cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage dist/
+          cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz dist/
+          cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz.sig dist/
           ls -la dist/
 
       - name: Upload Artifact
@@ -102,10 +111,89 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-      - name: Publish Release assets
-        if: startsWith(github.ref, 'refs/tags/v')
+  # 等三平台构建完：生成 latest.json 并发布 Release（安装包 + updater 产物）
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate latest.json
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          SIG_MAC=$(cat dist/*.app.tar.gz.sig | head -1)
+          SIG_WIN=$(cat dist/*.msi.zip.sig 2>/dev/null | head -1 || cat dist/*.exe.zip.sig 2>/dev/null | head -1)
+          SIG_LINUX=$(cat dist/*.AppImage.tar.gz.sig | head -1)
+          BASE="https://github.com/oubuild/skills-manager/releases/download/${GITHUB_REF_NAME}"
+
+          MAC_TAR=$(ls dist/*.app.tar.gz | xargs -n1 basename)
+          WIN_UPD=$(ls dist/*.msi.zip 2>/dev/null | xargs -n1 basename || ls dist/*.exe.zip | xargs -n1 basename)
+          LINUX_UPD=$(ls dist/*.AppImage.tar.gz | xargs -n1 basename)
+
+          cat > latest.json <<EOF
+          {
+            "version": "$VERSION",
+            "notes": "Skills Manager $VERSION",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "darwin-aarch64": {
+                "url": "$BASE/$MAC_TAR",
+                "signature": "$SIG_MAC"
+              },
+              "windows-x86_64": {
+                "url": "$BASE/$WIN_UPD",
+                "signature": "$SIG_WIN"
+              },
+              "linux-x86_64": {
+                "url": "$BASE/$LINUX_UPD",
+                "signature": "$SIG_LINUX"
+              }
+            }
+          }
+          EOF
+          cat latest.json
+
+      - name: Publish Release
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/*
+          files: |
+            dist/*
+            latest.json
           fail_on_unmatched_files: false
-          # Release 本体由 release.yml (changelogithub) 创建，这里只追加平台安装包
+          generate_release_notes: true
+
+  # 上传资产到 CNB 国内镜像 Release（国内下载加速）
+  # 前置：cnb.cool 存在同名仓库 + .cnb.yml 自动建 Release + GitHub Secrets 配 GIT_PASSWORD
+  upload-cnb:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Clone attachments plugin (fork)
+        run: git clone --depth 1 https://cnb.cool/ryanuo/attachments.git plugin
+
+      - name: Build plugin
+        working-directory: plugin
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Upload to CNB Release
+        env:
+          CNB_TOKEN: ${{ secrets.GIT_PASSWORD }}
+          CNB_API_ENDPOINT: 'https://api.cnb.cool'
+          CNB_REPO_SLUG: 'ryanuo/skills-manager'
+          PLUGIN_TAG: ${{ github.ref_name }}
+          PLUGIN_ATTACHMENTS: './dist/*'
+        run: node plugin/dist/entrypoint.js

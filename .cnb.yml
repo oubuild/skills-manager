@@ -1,0 +1,12 @@
+# CNB 云原生构建流水线：tag 推送时自动创建 Release
+# 配合 GitHub Actions build.yml 的 upload-cnb job（构建完上传附件）：
+#   时序: git-sync 同步 tag 到 CNB -> 本流水线触发建 Release（秒级）
+#         -> GitHub 构建完成 -> attachments 上传附件（Release 已就绪）
+# 说明: git:release 不支持上传附件, 附件由 cnbcool/attachments 上传（GitHub 侧）
+$:
+  tag_push:
+    - stages:
+      - name: create release
+        type: git:release
+        options:
+          title: ${CNB_BRANCH}
