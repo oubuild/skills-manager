@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skills Manager</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/marked@12.0.0/marked.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  /* shadcn/ui zinc 主题 token */
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --radius: 0.5rem;
+  }
+  * { border-color: hsl(var(--border)); }
+  body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-feature-settings: "cv02","cv03","cv04","cv11";
+  }
+
+  /* shadcn 组件复刻 */
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:.375rem;
+         font-size:.875rem; font-weight:500; border-radius:calc(var(--radius) - 2px);
+         height:2.25rem; padding:0 .875rem; transition:all .15s; cursor:pointer;
+         border:1px solid transparent; white-space:nowrap; user-select:none; }
+  .btn:disabled { opacity:.5; cursor:not-allowed; pointer-events:none; }
+  .btn-default { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); }
+  .btn-default:hover { background:hsl(var(--primary) / .9); }
+  .btn-outline { border-color:hsl(var(--input)); background:transparent; color:hsl(var(--foreground)); }
+  .btn-outline:hover { background:hsl(var(--secondary)); }
+  .btn-ghost { background:transparent; color:hsl(var(--foreground)); }
+  .btn-ghost:hover { background:hsl(var(--secondary)); }
+  .btn-destructive { background:hsl(var(--destructive)); color:hsl(var(--destructive-foreground)); }
+  .btn-destructive:hover { background:hsl(var(--destructive) / .9); }
+  .btn-sm { height:1.875rem; padding:0 .625rem; font-size:.8125rem; }
+  .btn-icon { width:2.25rem; padding:0; }
+
+  .input { display:flex; height:2.25rem; width:100%; border-radius:calc(var(--radius) - 2px);
+           border:1px solid hsl(var(--input)); background:transparent; padding:0 .75rem;
+           font-size:.875rem; transition:box-shadow .15s; outline:none; }
+  .input:focus { box-shadow:0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring)); }
+  .input::placeholder { color:hsl(var(--muted-foreground)); }
+
+  .card { background:hsl(var(--card)); color:hsl(var(--card-foreground));
+          border:1px solid hsl(var(--border)); border-radius:var(--radius);
+          box-shadow:0 1px 2px 0 rgb(0 0 0 / 0.05); transition:all .15s; }
+  .card-hover:hover { transform:translateY(-2px); box-shadow:0 4px 12px -2px rgb(0 0 0 / 0.08); cursor:pointer; }
+
+  .badge { display:inline-flex; align-items:center; border-radius:9999px;
+           padding:.125rem .625rem; font-size:.75rem; font-weight:500;
+           border:1px solid transparent; white-space:nowrap; }
+  .badge-default { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); }
+  .badge-secondary { background:hsl(var(--secondary)); color:hsl(var(--secondary-foreground)); }
+  .badge-outline { border-color:hsl(var(--border)); color:hsl(var(--foreground)); background:transparent; }
+  .badge-destructive { background:hsl(var(--destructive)); color:hsl(var(--destructive-foreground)); }
+
+  .agent-pill { display:inline-flex; align-items:center; border-radius:4px;
+                padding:0 .375rem; height:1.125rem; font-size:.625rem; font-weight:600;
+                letter-spacing:.02em; white-space:nowrap; vertical-align:middle; }
+
+  .dialog-overlay { position:fixed; inset:0; background:rgb(0 0 0 / .5); z-index:50;
+                    backdrop-filter:blur(2px); animation:fadeIn .15s; }
+  .dialog { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:51;
+            background:hsl(var(--background)); border:1px solid hsl(var(--border));
+            border-radius:var(--radius); box-shadow:0 10px 40px -10px rgb(0 0 0 / .2);
+            width:min(28rem, calc(100vw - 2rem)); padding:1.5rem; animation:slideIn .15s; }
+  @keyframes fadeIn { from {opacity:0} to {opacity:1} }
+  @keyframes slideIn { from {opacity:0; transform:translate(-50%,-48%)} to {opacity:1; transform:translate(-50%,-50%)} }
+
+  .sheet-overlay { position:fixed; inset:0; background:rgb(0 0 0 / .5); z-index:50; animation:fadeIn .2s; }
+  .sheet { position:fixed; top:0; right:0; bottom:0; z-index:51;
+           width:min(48rem, 90vw); background:hsl(var(--background));
+           border-left:1px solid hsl(var(--border));
+           box-shadow:-10px 0 40px -10px rgb(0 0 0 / .15);
+           animation:sheetIn .25s cubic-bezier(.32,.72,.35,1); overflow-y:auto; }
+  @keyframes sheetIn { from {transform:translateX(100%)} to {transform:translateX(0)} }
+
+  .tabs-list { display:inline-flex; height:2.25rem; align-items:center; justify-content:center;
+               border-radius:calc(var(--radius) - 2px); background:hsl(var(--muted));
+               padding:.25rem; gap:.25rem; }
+  .tabs-trigger { display:inline-flex; align-items:center; justify-content:center;
+                  padding:.25rem .75rem; font-size:.8125rem; font-weight:500;
+                  border-radius:calc(var(--radius) - 4px); color:hsl(var(--muted-foreground));
+                  cursor:pointer; transition:all .15s; border:none; background:transparent; }
+  .tabs-trigger[data-active="true"] { background:hsl(var(--background));
+                                       color:hsl(var(--foreground));
+                                       box-shadow:0 1px 2px 0 rgb(0 0 0 / .05); }
+
+  .switch { position:relative; display:inline-block; width:2rem; height:1.125rem;
+            border-radius:9999px; background:hsl(var(--input)); cursor:pointer;
+            transition:background .15s; border:none; flex-shrink:0; }
+  .switch[data-on="true"] { background:hsl(var(--primary)); }
+  .switch::after { content:""; position:absolute; top:.125rem; left:.125rem;
+                   width:.875rem; height:.875rem; border-radius:50%;
+                   background:white; transition:transform .15s;
+                   box-shadow:0 1px 2px rgb(0 0 0 / .2); }
+  .switch[data-on="true"]::after { transform:translateX(.875rem); }
+
+  .scrollbar-thin::-webkit-scrollbar { width:6px; height:6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background:hsl(var(--border)); border-radius:3px; }
+
+  /* Markdown 渲染 */
+  .md { font-size:.875rem; line-height:1.7; }
+  .md h1,.md h2,.md h3,.md h4 { font-weight:600; margin:1.25em 0 .5em; }
+  .md h1 { font-size:1.375rem; } .md h2 { font-size:1.125rem; }
+  .md h3 { font-size:1rem; } .md h4 { font-size:.9375rem; }
+  .md p { margin:.5em 0; }
+  .md ul,.md ol { padding-left:1.5em; margin:.5em 0; }
+  .md code { background:hsl(var(--muted)); padding:.125rem .375rem; border-radius:.25rem;
+             font-size:.8125em; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .md pre { background:hsl(var(--muted)); padding:.875rem; border-radius:var(--radius);
+            overflow-x:auto; margin:.75em 0; }
+  .md pre code { background:transparent; padding:0; }
+  .md blockquote { border-left:3px solid hsl(var(--border)); padding-left:1em;
+                   color:hsl(var(--muted-foreground)); margin:.75em 0; }
+  .md table { border-collapse:collapse; margin:.75em 0; width:100%; }
+  .md th,.md td { border:1px solid hsl(var(--border)); padding:.375rem .75rem; text-align:left; }
+  .md th { background:hsl(var(--muted)); font-weight:600; }
+  .md a { color:hsl(var(--primary)); text-decoration:underline; }
+  .md hr { border-color:hsl(var(--border)); margin:1.5em 0; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>
