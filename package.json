@@ -8,9 +8,11 @@
   },
   "scripts": {
     "build:css": "tailwindcss -i ./input.css -o ./static/tailwind.css --minify",
-    "dev": "pnpm build:css && tauri dev",
-    "build": "pnpm build:css && tauri build",
-    "tauri": "tauri"
+    "build:ota": "esbuild ota-entry.mjs --bundle --format=esm --outfile=static/ota.js",
+    "dev": "pnpm build:css && pnpm build:ota && tauri dev",
+    "build": "pnpm build:css && pnpm build:ota && tauri build",
+    "tauri": "tauri",
+    "release": "bumpp --commit \"chore: release {tag}\" --tag \"{version}\" --push"
   },
   "repository": {
     "type": "git",
@@ -26,10 +28,13 @@
   "type": "module",
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
+    "bumpp": "^12.2.1",
+    "esbuild": "^0.28.2",
     "tailwindcss": "^3.4.17"
   },
   "packageManager": "pnpm@10.18.1+sha512.77a884a165cbba2d8d1c19e3b4880eee6d2fcabd0d879121e282196b80042351d5eb3ca0935fa599da1dc51265cc68816ad2bddd2a2de5ea9fdf92adbec7cd34",
   "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1"
   }

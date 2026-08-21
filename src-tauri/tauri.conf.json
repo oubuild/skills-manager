@@ -7,7 +7,7 @@
     "frontendDist": "../static",
     "devUrl": "http://127.0.0.1:8080",
     "beforeDevCommand": "python3 server.py",
-    "beforeBuildCommand": "pnpm build:css"
+    "beforeBuildCommand": "pnpm build:css && pnpm build:ota"
   },
   "app": {
     "withGlobalTauri": true,

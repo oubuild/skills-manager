@@ -340,7 +340,7 @@ createApp({
       if (!inTauri) { showToast('网页模式不支持应用更新', 'warn'); return; }
       appUpdateChecking.value = true;
       try {
-        const { check } = await import('@tauri-apps/plugin-updater');
+        const { check } = await import('./ota.js');
         const u = await check();
         if (u) {
           appUpdate.value = { version: u.version, body: u.body || '' };
@@ -361,8 +361,8 @@ createApp({
       appUpdateDownloading.value = true;
       appUpdateProgress.value = 0;
       try {
-        const { check } = await import('@tauri-apps/plugin-updater');
-        const { relaunch } = await import('@tauri-apps/plugin-process');
+        const { check } = await import('./ota.js');
+        const { relaunch } = await import('./ota.js');
         const u = await check();
         if (!u) return;
         let contentLength = 0, received = 0;
