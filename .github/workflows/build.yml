@@ -98,10 +98,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb dist/
-          cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage dist/
-          cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz dist/
-          cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz.sig dist/
+          cp src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb dist/ 2>/dev/null || true
+          cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage dist/ 2>/dev/null || true
+          cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz dist/ 2>/dev/null || true
+          cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz.sig dist/ 2>/dev/null || true
           ls -la dist/
 
       - name: Upload Artifact
