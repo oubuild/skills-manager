@@ -412,6 +412,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/install":
             return self._install(body)
+        if path == "/api/update":
+            return self._update(body)
         if path == "/api/link":
             return self._link(body)
         m = re.match(r"^/api/skills/([A-Za-z0-9_\-]+)/(pin|state|delete)$", path)
@@ -521,6 +523,26 @@ class Handler(BaseHTTPRequestHandler):
             os.symlink(Path(item["path"]), target)
             return self._json(200, {"name": item["name"], "agent": agent,
                                     "path": str(target), "ok": True})
+        except Exception as e:
+            return self._error(500, str(e))
+
+    def _update(self, body):
+        """更新 skill：指定 name 更新单个，否则更新全部过期 skill。"""
+        name = (body.get("name") or "").strip()
+        if name and not re.match(r"^[a-zA-Z0-9_\-\.]+$", name):
+            return self._error(400, "skill 名称含非法字符")
+        cmd = ["hermes", "skills", "update"] + ([name] if name else [])
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            ok = r.returncode == 0
+            return self._json(200 if ok else 500, {
+                "ok": ok,
+                "name": name or "(全部)",
+                "stdout": r.stdout[-3000:],
+                "stderr": r.stderr[-3000:],
+            })
+        except subprocess.TimeoutExpired:
+            return self._error(500, "更新超时（300s）")
         except Exception as e:
             return self._error(500, str(e))
 

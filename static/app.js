@@ -72,6 +72,9 @@ createApp({
     const deleteTarget = ref(null);   // skill 对象（多源时弹选择）
     const deleteAgent = ref('');      // 已选定要删的源
     const deleteLoading = ref(false);
+    const updateDialog = ref(false);  // 更新面板
+    const updateResult = ref(null);   // 更新结果 {ok, name, stdout, stderr}
+    const updatingName = ref('');     // 正在更新的 skill（空=全部）
     const toast = ref(null);
     let toastTimer = null;
      const sources = ref([]);          // 各 agent 源统计（后端 /api/skills.sources）
@@ -106,15 +109,47 @@ createApp({
       }
     }
 
-    async function checkUpdates() {
+    async function checkUpdates(openDialog = true) {
       updatesLoading.value = true;
       try {
         const r = await fetch('/api/updates');
         updates.value = await r.json();
+        if (openDialog) openUpdateDialog();
       } catch (e) {
         showToast('检查更新失败: ' + e.message, 'error');
       } finally {
         updatesLoading.value = false;
+      }
+    }
+
+    function openUpdateDialog() {
+      updateDialog.value = true;
+      updateResult.value = null;
+      updatingName.value = '';
+    }
+
+    async function doUpdate(name) {
+      updatingName.value = name || '';
+      updateResult.value = null;
+      try {
+        const r = await fetch('/api/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name || '' }),
+        });
+        updateResult.value = await r.json();
+        if (updateResult.value.ok) {
+          showToast(name ? `已更新 ${name}` : '已更新全部过期 skill');
+          await loadSkills();
+          // 静默重查，刷新顶部待更新数
+          const rr = await fetch('/api/updates');
+          const ud = await rr.json();
+          updates.value = ud;
+        }
+      } catch (e) {
+        updateResult.value = { ok: false, stderr: e.message };
+      } finally {
+        updatingName.value = '';
       }
     }
 
@@ -319,7 +354,7 @@ createApp({
 
     onMounted(() => {
       loadSkills();
-      checkUpdates();
+      checkUpdates(false);
     });
 
     return {
@@ -327,6 +362,7 @@ createApp({
        sources, activeAgents, toggleAgent,
       detail, detailLoading, detailTab, renderedDoc, linkTargets, linkTo,
       updates, updatesLoading, installDialog, installInput, installResult, installLoading,
+      updateDialog, updateResult, updatingName, doUpdate, openUpdateDialog,
       deleteTarget, deleteAgent, deleteLoading, toast,
       scenes, filtered, stats,
       selectScene, selectCategory, agentStyle,
@@ -342,14 +378,14 @@ createApp({
     <!-- Header -->
     <header class="border-b sticky top-0 z-40 bg-background/95 backdrop-blur">
       <div class="px-6 h-14 flex items-center gap-4">
-        <h1 class="text-base font-semibold tracking-tight flex items-center gap-2">
+        <h1 class="text-base font-semibold tracking-tight flex items-center gap-2 shrink-0">
           <span class="text-lg">⬡</span> Skills Manager
         </h1>
-        <div class="flex-1 max-w-md">
-          <input v-model="search" class="input" placeholder="搜索 skill 名称或描述…" />
+        <div class="flex-1 flex justify-center max-w-xl mx-auto">
+          <input v-model="search" class="input w-full" placeholder="搜索 skill 名称或描述…" />
         </div>
-        <div class="ml-auto flex items-center gap-2">
-          <button class="btn btn-outline btn-sm" @click="checkUpdates" :disabled="updatesLoading">
+        <div class="ml-auto flex items-center gap-2 shrink-0">
+          <button class="btn btn-outline btn-sm" @click="checkUpdates()" :disabled="updatesLoading">
             {{ updatesLoading ? '检查中…' : '检查更新' }}
             <span v-if="updates && updates.count > 0" class="badge badge-destructive ml-1">{{ updates.count }}</span>
           </button>
@@ -428,13 +464,6 @@ createApp({
             <div class="text-xs text-muted-foreground mt-1">已停用</div></div>
           <div class="card p-4"><div class="text-2xl font-semibold">{{ stats.updateCount ?? '—' }}</div>
             <div class="text-xs text-muted-foreground mt-1">待更新（Hermes）</div></div>
-        </div>
-
-        <!-- 更新提示条 -->
-        <div v-if="updates && updates.count > 0" class="card p-3 mb-4 flex items-center gap-3 border-l-4"
-             style="border-left-color: hsl(var(--destructive));">
-          <span class="text-sm">📦 {{ updates.count }} 个技能有更新：</span>
-          <span v-for="u in updates.updates" :key="u.name" class="badge badge-secondary">{{ u.name }}</span>
         </div>
 
         <!-- 状态 -->
@@ -599,6 +628,48 @@ createApp({
                   :disabled="deleteLoading || !deleteAgent">
             {{ deleteLoading ? '删除中…' : ('确认删除' + (deleteAgent ? '（' + deleteAgent + '）' : '')) }}
           </button>
+        </div>
+      </div>
+    </template>
+
+    <!-- 更新 Dialog -->
+    <template v-if="updateDialog">
+      <div class="dialog-overlay" @click="updateDialog = false; updateResult = null"></div>
+      <div class="dialog" style="width:min(40rem, calc(100vw - 2rem))">
+        <h3 class="text-base font-semibold mb-2">更新 Skill</h3>
+
+        <template v-if="!updateResult">
+          <p v-if="updates && updates.count > 0" class="text-sm text-muted-foreground mb-1">
+            发现 {{ updates.count }} 个可更新的 skill：
+          </p>
+          <div v-if="updates && updates.count > 0" class="space-y-2 mb-4 mt-2">
+            <div v-for="u in updates.updates" :key="u.name"
+                 class="card p-3 flex items-center gap-3">
+              <span class="font-mono text-sm flex-1">{{ u.name }}</span>
+              <span class="badge badge-outline">{{ u.source }}</span>
+              <span class="badge badge-destructive">可更新</span>
+              <button class="btn btn-default btn-sm shrink-0" @click="doUpdate(u.name)">
+                更新
+              </button>
+            </div>
+            <button class="btn btn-outline btn-sm w-full mt-1" @click="doUpdate('')">
+              更新全部
+            </button>
+          </div>
+          <div v-else class="text-sm text-muted-foreground py-6 text-center">
+            所有 skill 已是最新 ✓
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="mb-3 p-3 rounded-md text-xs font-mono whitespace-pre-wrap max-h-56 overflow-y-auto scrollbar-thin"
+               :class="updateResult.ok ? 'bg-secondary' : 'bg-red-50 text-red-900 border border-red-200'">
+            {{ updateResult.ok ? (updateResult.stdout || '更新完成') : (updateResult.stderr || updateResult.error) }}
+          </div>
+        </template>
+
+        <div class="flex justify-end gap-2 mt-4">
+          <button class="btn btn-outline btn-sm" @click="updateDialog = false; updateResult = null">关闭</button>
         </div>
       </div>
     </template>
