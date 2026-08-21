@@ -42,7 +42,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEwNjU4OTE3Qjk4RUVGOTAKUldTUTc0NjVGNGxsb09yNjVsbzZXMENFT3hTcEY1dDBaRVVEUEFKTE5kWXdQVHdEL1JNbU85NWcK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM1RjY3MjgwQzI5RjlGOEIKUldTTG41L0NnSEwyeFhDMVRNZmk1UVJuOHM5Y1E0M29tSXdBWURIT2pFVEttUStDN0YvOXB0SzQK",
       "endpoints": [
         "https://cnb.cool/oubuild/skills-manager/-/releases/latest/download/latest.json",
         "https://github.com/oubuild/skills-manager/releases/latest/download/latest.json"
