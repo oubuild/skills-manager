@@ -47,6 +47,14 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # 显式缓存 cargo registry（依赖下载）
+          cache-directories: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          # 使用 Cargo.lock 作为缓存 key，依赖没变就复用
+          cache-on-failure: true
+          # 跨 workflow 共享缓存
+          shared-key: "tauri-build"
 
       # Linux: Tauri 系统依赖（webkit2gtk 等）
       - name: Install Linux dependencies
