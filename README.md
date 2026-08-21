@@ -1,11 +1,23 @@
-# Skills Manager
+<p align="center">
+  <img src="docs/logo.png" width="120" alt="Skills Manager logo" />
+</p>
 
-本地网页统一管理多个 AI Agent 的 skills：浏览、搜索、按 agent/场景筛选、启停、固定、安装、链接、删除、检查更新。
+<h1 align="center">Skills Manager</h1>
+
+<p align="center">本地统一管理多个 AI Agent 的 skills：浏览、搜索、按 agent/场景筛选、启停、固定、安装、链接、删除、检查更新。</p>
 
 ## 启动
 
+**桌面应用（Tauri）：**
+
 ```bash
-cd ~/dev/github/skills-manager
+pnpm install
+pnpm dev
+```
+
+**网页模式：**
+
+```bash
 python3 server.py
 # 打开 http://127.0.0.1:8080
 ```
@@ -40,8 +52,9 @@ python3 server.py
 
 ## 技术栈
 
-- 后端：Python 3.9 标准库（零依赖，`http.server`）
-- 前端：Vue 3 (CDN) + Tailwind Play CDN + 手写 shadcn/ui zinc 主题 CSS 变量
+- 桌面端：Tauri 2（Rust 后端，复用 `server.py` 逻辑）
+- 网页模式：Python 3.9 标准库（零依赖，`http.server`）
+- 前端：Vue 3 + Tailwind CSS（预构建）+ 手写 shadcn/ui zinc 主题 CSS 变量
 - 数据源：多源目录遍历 + `.usage.json` + `hermes skills list`
 
 ## 场景分类

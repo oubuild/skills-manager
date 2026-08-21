@@ -8,4 +8,6 @@ __pycache__/
 *.log
 .DS_Store
 node_modules
-targetsrc-tauri/gen/
+target
+src-tauri/gen/
+target
