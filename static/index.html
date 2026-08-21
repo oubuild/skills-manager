@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Skills Manager</title>
   <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBvbHlnb24gcG9pbnRzPSIxNiwzIDI3LjUsOS41IDI3LjUsMjIuNSAxNiwyOSA0LjUsMjIuNSA0LjUsOS41IiBmaWxsPSIjMTgxODFiIi8+PC9zdmc+">
-<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-<script src="https://unpkg.com/marked@12.0.0/marked.min.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
+<script src="/static/vue.global.prod.js"></script>
+<script src="/static/marked.min.js"></script>
+<link rel="stylesheet" href="/static/tailwind.css">
 <style>
   /* shadcn/ui zinc 主题 token */
   :root {
@@ -29,6 +29,7 @@
     --radius: 0.5rem;
   }
   * { border-color: hsl(var(--border)); }
+  html, body { height: 100%; overflow: hidden; }
   body {
     background: hsl(var(--background));
     color: hsl(var(--foreground));

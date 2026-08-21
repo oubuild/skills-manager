@@ -1,3 +1,4 @@
+import { api, openExternal } from './api.js';
 const { createApp, ref, computed, onMounted } = Vue;
 
 // ---------- Agent 徽章配色 ----------
@@ -99,8 +100,7 @@ createApp({
       loading.value = true;
       error.value = '';
       try {
-        const r = await fetch('/api/skills');
-        const d = await r.json();
+        const d = await api('get_skills');
         if (d.error) throw new Error(d.error);
         skills.value = d.skills.map(s => ({ ...s, scene: sceneOf(s) }));
          sources.value = d.sources || [];
@@ -115,8 +115,7 @@ createApp({
     async function checkUpdates(openDialog = true) {
       updatesLoading.value = true;
       try {
-        const r = await fetch('/api/updates');
-        updates.value = await r.json();
+        updates.value = await api('check_updates');
         if (openDialog) openUpdateDialog();
       } catch (e) {
         showToast('检查更新失败: ' + e.message, 'error');
@@ -136,19 +135,12 @@ createApp({
       updating.value = true;
       updateResult.value = null;
       try {
-        const r = await fetch('/api/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name || '' }),
-        });
-        updateResult.value = await r.json();
+        updateResult.value = await api('update_skill', { name: name || '' });
         if (updateResult.value.ok) {
           showToast(name ? `已更新 ${name}` : '已更新全部过期 skill');
           await loadSkills();
           // 静默重查，刷新顶部待更新数
-          const rr = await fetch('/api/updates');
-          const ud = await rr.json();
-          updates.value = ud;
+          updates.value = await api('check_updates');
         }
       } catch (e) {
         updateResult.value = { ok: false, stderr: e.message };
@@ -164,8 +156,7 @@ createApp({
       detailTab.value = 'doc';
       detail.value = { ...s, content: '', files: {} };
       try {
-        const r = await fetch('/api/skills/' + encodeURIComponent(s.id));
-        const d = await r.json();
+        const d = await api('get_skill_detail', { id: s.id });
         if (d.error) throw new Error(d.error);
         detail.value = { ...s, content: d.content, files: d.files };
       } catch (e) {
@@ -191,12 +182,7 @@ createApp({
     async function linkTo(agent) {
       if (!detail.value) return;
       try {
-        const r = await fetch('/api/link', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: detail.value.id, agent }),
-        });
-        const d = await r.json();
+        const d = await api('link_skill', { id: detail.value.id, agent });
         if (d.error) throw new Error(d.error);
         showToast(`已链接到 ${agent}`);
         await loadSkills();
@@ -211,8 +197,7 @@ createApp({
     async function togglePin(s, ev) {
       ev?.stopPropagation();
       try {
-        const r = await fetch(`/api/skills/${encodeURIComponent(s.id)}/pin`, { method: 'POST' });
-        const d = await r.json();
+        const d = await api('toggle_pin', { id: s.id });
         if (d.error) throw new Error(d.error);
         s.pinned = d.pinned;
         if (detail.value?.id === s.id) detail.value.pinned = d.pinned;
@@ -226,12 +211,7 @@ createApp({
       ev?.stopPropagation();
       const target = s.state === 'active' ? 'archived' : 'active';
       try {
-        const r = await fetch(`/api/skills/${encodeURIComponent(s.id)}/state`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ state: target }),
-        });
-        const d = await r.json();
+        const d = await api('set_state', { id: s.id, state: target });
         if (d.error) throw new Error(d.error);
         s.state = d.state;
         if (detail.value?.id === s.id) detail.value.state = d.state;
@@ -252,12 +232,7 @@ createApp({
       if (!s || !agent) return;
       deleteLoading.value = true;
       try {
-        const r = await fetch(`/api/skills/${encodeURIComponent(s.id)}/delete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirm: true, agent }),
-        });
-        const d = await r.json();
+        const d = await api('delete_skill', { id: s.id, confirm: true, agent });
         if (d.error) throw new Error(d.error);
         if (d.warning) showToast(d.warning, 'warn');
         await loadSkills();
@@ -280,12 +255,7 @@ createApp({
       installLoading.value = true;
       installResult.value = null;
       try {
-        const r = await fetch('/api/install', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ identifier: installInput.value.trim() }),
-        });
-        installResult.value = await r.json();
+        installResult.value = await api('install_skill', { identifier: installInput.value.trim() });
         if (installResult.value.ok) {
           showToast('安装成功');
           installInput.value = '';
@@ -376,12 +346,13 @@ createApp({
       openDetail, togglePin, toggleState, askDelete, confirmDelete, doInstall, checkUpdates,
       closeDetail: () => detail.value = null,
       closeDelete: () => { deleteTarget.value = null; deleteAgent.value = ''; },
+      openExternal,
       SCENE_ICONS,
     };
   },
 
   template: `
-  <div class="min-h-screen flex flex-col">
+  <div class="h-screen flex flex-col overflow-hidden">
     <!-- Header -->
     <header class="border-b sticky top-0 z-40 bg-background/95 backdrop-blur">
       <div class="px-6 h-14 flex items-center gap-4">
@@ -397,7 +368,7 @@ createApp({
             <span v-if="updates && updates.count > 0" class="badge badge-destructive ml-1">{{ updates.count }}</span>
           </button>
           <button class="btn btn-default btn-sm" @click="installDialog = true">+ 安装 Skill</button>
-          <a href="https://github.com/oubuild/skills-manager" target="_blank" rel="noopener noreferrer"
+          <a href="https://github.com/oubuild/skills-manager" @click.prevent="openExternal('https://github.com/oubuild/skills-manager')"
              class="btn btn-outline btn-icon" title="在 GitHub 上查看此项目" aria-label="GitHub 仓库">
             <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path>
@@ -407,7 +378,7 @@ createApp({
       </div>
     </header>
 
-    <div class="flex flex-1 overflow-hidden">
+    <div class="flex flex-1 overflow-hidden min-h-0">
       <!-- Sidebar -->
       <aside class="w-56 border-r p-4 overflow-y-auto scrollbar-thin shrink-0">
          <div class="text-xs font-medium text-muted-foreground mb-2 px-2">Agent</div>
@@ -454,7 +425,7 @@ createApp({
       </aside>
 
       <!-- Main -->
-      <main class="flex-1 overflow-y-auto scrollbar-thin p-6">
+      <main class="flex-1 overflow-y-auto scrollbar-thin p-6 min-h-0">
         <!-- Stats -->
         <div class="text-xs text-muted-foreground mb-3">
           共 <span class="font-semibold text-foreground">{{ stats.total }}</span> 个技能，

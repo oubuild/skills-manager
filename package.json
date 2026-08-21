@@ -1,0 +1,32 @@
+{
+  "name": "skills-manager",
+  "version": "1.0.0",
+  "description": "本地统一管理多个 AI Agent 的 skills（桌面端，Tauri + Rust）。",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "build:css": "tailwindcss -i ./input.css -o ./static/tailwind.css --minify",
+    "dev": "pnpm build:css && tauri dev",
+    "build": "pnpm build:css && tauri build",
+    "tauri": "tauri"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oubuild/skills-manager.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/oubuild/skills-manager/issues"
+  },
+  "homepage": "https://github.com/oubuild/skills-manager#readme",
+  "type": "module",
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "tailwindcss": "^3.4.17"
+  },
+  "packageManager": "pnpm@10.18.1+sha512.77a884a165cbba2d8d1c19e3b4880eee6d2fcabd0d879121e282196b80042351d5eb3ca0935fa599da1dc51265cc68816ad2bddd2a2de5ea9fdf92adbec7cd34"
+}

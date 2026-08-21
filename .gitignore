@@ -7,3 +7,5 @@ __pycache__/
 # 本地运行数据
 *.log
 .DS_Store
+node_modules
+targetsrc-tauri/gen/

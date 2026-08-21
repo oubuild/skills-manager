@@ -1,0 +1,1 @@
+{"com.oubuild.skillsmanager":{"identifier":"com.oubuild.skillsmanager","description":"Skills Manager 桌面端权限配置","local":true,"windows":["main"],"permissions":["core:default","core:event:default","shell:allow-open"]}}
