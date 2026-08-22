@@ -14,7 +14,16 @@ const AGENT_ORDER: &[&str] = &["Hermes", "Claude", "Codex", "Cursor", "Shared"];
 const USAGE_SUBS: &[&str] = &["references", "scripts", "templates", "agents", "assets"];
 
 fn home() -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()))
+    // Windows 没有 HOME，只有 USERPROFILE
+    std::env::var(if cfg!(target_os = "windows") {
+        "USERPROFILE"
+    } else {
+        "HOME"
+    })
+    .or_else(|_| std::env::var("HOME"))
+    .or_else(|_| std::env::var("USERPROFILE"))
+    .unwrap_or_else(|_| "/".to_string())
+    .into()
 }
 
 fn sources() -> HashMap<String, PathBuf> {
@@ -29,10 +38,7 @@ fn sources() -> HashMap<String, PathBuf> {
 }
 
 fn active_sources() -> HashMap<String, PathBuf> {
-    sources()
-        .into_iter()
-        .filter(|(_, p)| p.is_dir())
-        .collect()
+    sources().into_iter().filter(|(_, p)| p.is_dir()).collect()
 }
 
 fn usage_file() -> PathBuf {
@@ -160,8 +166,7 @@ fn decode_id(sid: &str) -> Option<PathBuf> {
 }
 
 // 手写 base64 编解码，避免引入额外 crate
-const B64: &[u8; 64] =
-    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 fn base64_encode_url(input: &[u8]) -> String {
     let mut out = String::new();
@@ -227,12 +232,14 @@ fn parse_frontmatter(text: &str) -> HashMap<String, String> {
         let l = line.trim();
         if let Some(rest) = l.strip_prefix("name:").or_else(|| l.strip_prefix("Name:")) {
             out.insert("name".into(), unquote(rest.trim()));
-        } else if let Some(rest) =
-            l.strip_prefix("description:").or_else(|| l.strip_prefix("Description:"))
+        } else if let Some(rest) = l
+            .strip_prefix("description:")
+            .or_else(|| l.strip_prefix("Description:"))
         {
             out.insert("description".into(), unquote(rest.trim()));
-        } else if let Some(rest) =
-            l.strip_prefix("category:").or_else(|| l.strip_prefix("Category:"))
+        } else if let Some(rest) = l
+            .strip_prefix("category:")
+            .or_else(|| l.strip_prefix("Category:"))
         {
             out.insert("category".into(), unquote(rest.trim()));
         }
@@ -259,8 +266,7 @@ fn extract_fm_block(text: &str) -> Option<String> {
 fn unquote(s: &str) -> String {
     let s = s.trim();
     if s.len() >= 2
-        && ((s.starts_with('"') && s.ends_with('"'))
-            || (s.starts_with('\'') && s.ends_with('\'')))
+        && ((s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')))
     {
         s[1..s.len() - 1].to_string()
     } else {
@@ -339,10 +345,15 @@ fn hermes_skills_list() -> (HashMap<String, CliMeta>, Option<String>) {
 }
 
 fn run_hermes(args: &[&str], timeout_secs: u64) -> Result<String, String> {
-    let r = Command::new("hermes")
-        .args(args)
-        .output()
-        .map_err(|e| e.to_string())?;
+    // Windows 上 npm 全局命令是 hermes.cmd，必须经 cmd /c 调用
+    let r = if cfg!(target_os = "windows") {
+        let mut full = vec!["/c", "hermes"];
+        full.extend_from_slice(args);
+        Command::new("cmd").args(&full).output()
+    } else {
+        Command::new("hermes").args(args).output()
+    }
+    .map_err(|e| e.to_string())?;
     let _ = timeout_secs;
     let mut out = String::from_utf8_lossy(&r.stdout).to_string();
     out.push_str(&String::from_utf8_lossy(&r.stderr));
@@ -367,7 +378,11 @@ fn scan_root(root: &Path) -> Vec<(PathBuf, String)> {
     if let Ok(iter) = std::fs::read_dir(root) {
         for ent in iter.flatten() {
             let entry = ent.path();
-            let name = entry.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = entry
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if name.starts_with('.') || name.starts_with('_') {
                 continue;
             }
@@ -389,7 +404,11 @@ fn walk_sub(d: &Path, category: &str) -> Vec<(PathBuf, String)> {
     if let Ok(iter) = std::fs::read_dir(d) {
         for ent in iter.flatten() {
             let sub = ent.path();
-            let name = sub.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = sub
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if name.starts_with('.') || name.starts_with('_') {
                 continue;
             }
@@ -442,7 +461,10 @@ fn collect_skills() -> (Vec<SkillItem>, Vec<SourceInfo>, Option<String>) {
         .map(|a| SourceInfo {
             agent: a.to_string(),
             root: active[*a].to_string_lossy().to_string(),
-            count: items.iter().filter(|it| it.agents.contains(&a.to_string())).count(),
+            count: items
+                .iter()
+                .filter(|it| it.agents.contains(&a.to_string()))
+                .count(),
         })
         .collect();
 
@@ -473,10 +495,13 @@ fn build_item(
     let md = resolved.join("SKILL.md");
     let text = std::fs::read_to_string(&md).unwrap_or_default();
     let fm = parse_frontmatter(&text);
-    let name = fm
-        .get("name")
-        .cloned()
-        .unwrap_or_else(|| resolved.file_name().unwrap_or_default().to_string_lossy().to_string());
+    let name = fm.get("name").cloned().unwrap_or_else(|| {
+        resolved
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
+    });
 
     let agents: Vec<String> = AGENT_ORDER
         .iter()
@@ -526,7 +551,11 @@ fn build_item(
     SkillItem {
         id: encode_id(resolved),
         name: name.clone(),
-        dir_name: resolved.file_name().unwrap_or_default().to_string_lossy().to_string(),
+        dir_name: resolved
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
         path: resolved.to_string_lossy().to_string(),
         category: cat,
         description: fm.get("description").cloned().unwrap_or_default(),
@@ -627,7 +656,8 @@ fn get_skill_detail(id: String) -> Result<DetailResponse, ApiError> {
                 let fp = f.path();
                 if fp.is_file() {
                     let key = format!("{}/{}", sub, f.file_name().to_string_lossy());
-                    let content = std::fs::read_to_string(&fp).unwrap_or_else(|_| "(无法读取)".into());
+                    let content =
+                        std::fs::read_to_string(&fp).unwrap_or_else(|_| "(无法读取)".into());
                     files.insert(key, content.chars().take(50000).collect());
                 }
             }
@@ -666,7 +696,12 @@ fn check_updates() -> Result<UpdatesResponse, ApiError> {
     }
     let count = out
         .find("update")
-        .and_then(|i| out[i..].chars().position(|c| c.is_ascii_digit()).map(|j| i + j))
+        .and_then(|i| {
+            out[i..]
+                .chars()
+                .position(|c| c.is_ascii_digit())
+                .map(|j| i + j)
+        })
         .and_then(|start| {
             let s = &out[start..];
             s.chars()
@@ -760,21 +795,12 @@ fn link_skill(id: String, agent: String) -> Result<SimpleResult, ApiError> {
     }
     if is_windows() {
         let r = Command::new("cmd")
-            .args([
-                "/c",
-                "mklink",
-                "/J",
-                &target.to_string_lossy(),
-                &item.path,
-            ])
+            .args(["/c", "mklink", "/J", &target.to_string_lossy(), &item.path])
             .output();
         if let Ok(o) = r {
             if !o.status.success() {
                 return Err(ApiError {
-                    error: format!(
-                        "创建 Junction 失败: {}",
-                        String::from_utf8_lossy(&o.stderr)
-                    ),
+                    error: format!("创建 Junction 失败: {}", String::from_utf8_lossy(&o.stderr)),
                 });
             }
         } else {
@@ -808,8 +834,13 @@ fn toggle_pin(id: String) -> Result<SimpleResult, ApiError> {
         error: "skill not found".into(),
     })?;
     let mut usage = load_usage();
-    let entry = usage.entry(item.name.clone()).or_insert(serde_json::json!({}));
-    let cur = entry.get("pinned").and_then(|v| v.as_bool()).unwrap_or(false);
+    let entry = usage
+        .entry(item.name.clone())
+        .or_insert(serde_json::json!({}));
+    let cur = entry
+        .get("pinned")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     entry["pinned"] = serde_json::json!(!cur);
     save_usage(&usage);
     Ok(SimpleResult {
@@ -831,7 +862,9 @@ fn set_state(id: String, state: String) -> Result<SimpleResult, ApiError> {
         error: "skill not found".into(),
     })?;
     let mut usage = load_usage();
-    let entry = usage.entry(item.name.clone()).or_insert(serde_json::json!({}));
+    let entry = usage
+        .entry(item.name.clone())
+        .or_insert(serde_json::json!({}));
     entry["state"] = serde_json::json!(state.clone());
     save_usage(&usage);
     Ok(SimpleResult {
@@ -934,7 +967,8 @@ fn regex_simple_ident(s: &str) -> bool {
 fn regex_install_ident(s: &str) -> bool {
     !s.is_empty()
         && s.chars().all(|c| {
-            c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/' | ':' | '@' | '?' | '=' | '&' | '%')
+            c.is_ascii_alphanumeric()
+                || matches!(c, '_' | '-' | '.' | '/' | ':' | '@' | '?' | '=' | '&' | '%')
         })
 }
 
