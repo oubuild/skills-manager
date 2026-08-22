@@ -256,9 +256,13 @@ createApp({
     });
 
     // 未安装该 skill 的源（用于「链接到」按钮）
+    // 从后端实际配置的平台动态取，而非写死老 4 个，避免新增 agent 后不显示
     const linkTargets = computed(() => {
       if (!detail.value) return [];
-      return ['Hermes', 'Claude', 'Codex', 'Cursor'].filter(a => !detail.value.agents.includes(a));
+      const installed = detail.value.agents || [];
+      return (sources.value || [])
+        .map(s => s.agent)
+        .filter(a => !installed.includes(a));
     });
 
     async function linkTo(agent) {
@@ -617,7 +621,7 @@ createApp({
       </aside>
 
       <!-- Main -->
-      <main class="flex-1 overflow-y-auto scrollbar-thin p-6 min-h-0">
+      <main class="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin p-6 min-h-0">
         <!-- Stats -->
         <div class="text-xs text-muted-foreground mb-3">
           共 <span class="font-semibold text-foreground">{{ stats.total }}</span> 个技能，
@@ -657,14 +661,14 @@ createApp({
                class="card card-hover p-4 flex flex-col gap-2"
                :class="{ 'opacity-60': s.state === 'archived' }"
                @click="openDetail(s)">
-            <div class="flex items-start gap-2">
+            <div class="flex items-start gap-2 min-w-0">
               <div class="flex-1 min-w-0">
                 <div class="font-medium text-sm truncate flex items-center gap-1.5">
                   <span v-if="s.pinned" title="已固定">📌</span>{{ s.name }}
                 </div>
                 <div class="flex items-center gap-1.5 mt-1 flex-wrap">
-                  <span class="badge badge-secondary">{{ s.scene }}</span>
-                  <span v-if="s.category" class="badge badge-outline">{{ s.category }}</span>
+                  <span class="badge badge-secondary truncate max-w-[120px]">{{ s.scene }}</span>
+                  <span v-if="s.category" class="badge badge-outline truncate max-w-[160px]">{{ s.category }}</span>
                   <span v-if="s.state === 'archived'" class="badge badge-destructive">已停用</span>
                 </div>
               </div>
