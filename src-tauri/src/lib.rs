@@ -344,16 +344,46 @@ fn hermes_skills_list() -> (HashMap<String, CliMeta>, Option<String>) {
     (map, None)
 }
 
+// GUI 应用（Finder/Dock 启动）不继承 shell 的 PATH，
+// hermes 可能装在 ~/.local/bin、~/bin、homebrew 等位置，需要显式补全搜索路径
+fn shell_path() -> String {
+    let mut extra = Vec::new();
+    if let Ok(h) = std::env::var("HOME") {
+        let h = PathBuf::from(h);
+        for dir in [".local/bin", "bin", ".cargo/bin", "go/bin"] {
+            let p = h.join(dir);
+            if p.is_dir() {
+                extra.push(p.to_string_lossy().to_string());
+            }
+        }
+    }
+    // homebrew (Apple Silicon / Intel)
+    for p in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        if Path::new(p).is_dir() {
+            extra.push(p.to_string());
+        }
+    }
+    let base = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin:/usr/sbin:/sbin".into());
+    if extra.is_empty() {
+        base
+    } else {
+        format!("{}:{}", extra.join(":"), base)
+    }
+}
+
 fn hermes_available() -> bool {
+    let path = shell_path();
     if cfg!(target_os = "windows") {
         Command::new("cmd")
             .args(["/c", "where", "hermes"])
+            .env("PATH", &path)
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
     } else {
         Command::new("which")
             .arg("hermes")
+            .env("PATH", &path)
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
@@ -362,12 +392,16 @@ fn hermes_available() -> bool {
 
 fn run_hermes(args: &[&str], timeout_secs: u64) -> Result<String, String> {
     // Windows 上 npm 全局命令是 hermes.cmd，必须经 cmd /c 调用
+    let path = shell_path();
     let r = if cfg!(target_os = "windows") {
         let mut full = vec!["/c", "hermes"];
         full.extend_from_slice(args);
-        Command::new("cmd").args(&full).output()
+        Command::new("cmd").args(&full).env("PATH", &path).output()
     } else {
-        Command::new("hermes").args(args).output()
+        Command::new("hermes")
+            .args(args)
+            .env("PATH", &path)
+            .output()
     }
     .map_err(|e| e.to_string())?;
     let _ = timeout_secs;
