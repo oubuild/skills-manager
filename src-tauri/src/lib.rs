@@ -344,6 +344,22 @@ fn hermes_skills_list() -> (HashMap<String, CliMeta>, Option<String>) {
     (map, None)
 }
 
+fn hermes_available() -> bool {
+    if cfg!(target_os = "windows") {
+        Command::new("cmd")
+            .args(["/c", "where", "hermes"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    } else {
+        Command::new("which")
+            .arg("hermes")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+}
+
 fn run_hermes(args: &[&str], timeout_secs: u64) -> Result<String, String> {
     // Windows 上 npm 全局命令是 hermes.cmd，必须经 cmd /c 调用
     let r = if cfg!(target_os = "windows") {
@@ -672,6 +688,11 @@ fn get_skill_detail(id: String) -> Result<DetailResponse, ApiError> {
 
 #[tauri::command]
 fn check_updates() -> Result<UpdatesResponse, ApiError> {
+    if !hermes_available() {
+        return Err(ApiError {
+            error: "未安装 Hermes CLI，无法检查 skill 更新（应用自身的更新不受影响）".into(),
+        });
+    }
     let out = run_hermes(&["skills", "check"], 60).map_err(|e| ApiError {
         error: format!("检查更新失败: {}", e),
     })?;
