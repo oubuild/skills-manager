@@ -29,12 +29,60 @@ fn home() -> PathBuf {
 fn sources() -> HashMap<String, PathBuf> {
     let h = home();
     let mut m = HashMap::new();
-    m.insert("Hermes".into(), h.join(".hermes").join("skills"));
-    m.insert("Claude".into(), h.join(".claude").join("skills"));
-    m.insert("Codex".into(), h.join(".codex").join("skills"));
-    m.insert("Cursor".into(), h.join(".cursor").join("skills-cursor"));
-    m.insert("Shared".into(), h.join(".agents").join("skills"));
+
+    // Windows 下各 CLI 的数据目录在 %LOCALAPPDATA%，与 macOS/Linux 的 ~/.xxx 不同
+    if cfg!(target_os = "windows") {
+        let local = std::env::var("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| h.join("AppData").join("Local"));
+
+        m.insert("Hermes".into(), local.join("hermes").join("skills"));
+        m.insert(
+            "Claude".into(),
+            pick_first(&[
+                local.join("claude").join("skills"),
+                local.join("anthropic-claude").join("skills"),
+                h.join(".claude").join("skills"),
+            ]),
+        );
+        m.insert(
+            "Codex".into(),
+            pick_first(&[
+                local.join("codex").join("skills"),
+                h.join(".codex").join("skills"),
+            ]),
+        );
+        m.insert(
+            "Cursor".into(),
+            pick_first(&[
+                local.join("cursor").join("skills-cursor"),
+                h.join(".cursor").join("skills-cursor"),
+            ]),
+        );
+        m.insert(
+            "Shared".into(),
+            pick_first(&[
+                local.join("agents").join("skills"),
+                h.join(".agents").join("skills"),
+            ]),
+        );
+    } else {
+        m.insert("Hermes".into(), h.join(".hermes").join("skills"));
+        m.insert("Claude".into(), h.join(".claude").join("skills"));
+        m.insert("Codex".into(), h.join(".codex").join("skills"));
+        m.insert("Cursor".into(), h.join(".cursor").join("skills-cursor"));
+        m.insert("Shared".into(), h.join(".agents").join("skills"));
+    }
     m
+}
+
+// 返回第一个已存在的候选路径；都不存在时返回最后一个（保持语义一致）
+fn pick_first(candidates: &[PathBuf]) -> PathBuf {
+    candidates
+        .iter()
+        .find(|p| p.is_dir())
+        .cloned()
+        .unwrap_or_else(|| candidates[candidates.len() - 1].to_path_buf())
 }
 
 fn active_sources() -> HashMap<String, PathBuf> {
