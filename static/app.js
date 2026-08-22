@@ -1,6 +1,45 @@
 import { api, openExternal } from './api.js';
 const { createApp, ref, computed, onMounted } = Vue;
 
+// ---------- 平台注册表（与后端 AGENTS 对齐）----------
+// icon: 单色 SVG path（24x24 viewBox, currentColor），fallback 用首字母色块
+const PLATFORM_META = {
+  hermes:      { label: 'Hermes',      group: 'Coding',  color: '#18181b' },
+  claude:      { label: 'Claude',      group: 'Coding',  color: '#d97757' },
+  codex:       { label: 'Codex',       group: 'Coding',  color: '#10a37f' },
+  cursor:      { label: 'Cursor',      group: 'Coding',  color: '#3b82f6' },
+  copilot:     { label: 'Copilot',     group: 'Coding',  color: '#6e7781' },
+  gemini:      { label: 'Gemini',      group: 'Coding',  color: '#4285f4' },
+  windsurf:    { label: 'Windsurf',    group: 'Coding',  color: '#14b8a6' },
+  trae:        { label: 'Trae',        group: 'Coding',  color: '#ef4444' },
+  'trae-cn':   { label: 'Trae CN',     group: 'Coding',  color: '#dc2626' },
+  qwen:        { label: 'Qwen',        group: 'Coding',  color: '#7c3aed' },
+  qoder:       { label: 'Qoder',       group: 'Coding',  color: '#0ea5e9' },
+  augment:     { label: 'Augment',     group: 'Coding',  color: '#f59e0b' },
+  opencode:    { label: 'OpenCode',    group: 'Coding',  color: '#22c55e' },
+  kilocode:    { label: 'KiloCode',    group: 'Coding',  color: '#8b5cf6' },
+  ob1:         { label: 'OB1',         group: 'Coding',  color: '#334155' },
+  amp:         { label: 'Amp',         group: 'Coding',  color: '#111111' },
+  kiro:        { label: 'Kiro',        group: 'Coding',  color: '#06b6d4' },
+  codebuddy:   { label: 'CodeBuddy',   group: 'Coding',  color: '#2563eb' },
+  aider:       { label: 'Aider',       group: 'Coding',  color: '#f97316' },
+  factory:     { label: 'Factory',     group: 'Coding',  color: '#64748b' },
+  junie:       { label: 'Junie',       group: 'Coding',  color: '#ec4899' },
+  openclaw:    { label: 'OpenClaw 开爪',   group: 'Lobster', color: '#e11d48' },
+  qclaw:       { label: 'QClaw 千爪',      group: 'Lobster', color: '#be123c' },
+  easyclaw:    { label: 'EasyClaw 简爪',   group: 'Lobster', color: '#f43f5e' },
+  'easyclaw-v2': { label: 'EasyClaw V2', group: 'Lobster', color: '#fb7185' },
+  autoclaw:    { label: 'AutoClaw',    group: 'Lobster', color: '#9f1239' },
+  workbuddy:   { label: 'WorkBuddy 打工搭子', group: 'Lobster', color: '#d946ef' },
+  central:     { label: 'Central',     group: 'Central', color: '#a16207' },
+};
+
+// 各平台首字母（无 SVG logo 时渲染成圆角色块）
+function platformInitial(key) {
+  const meta = PLATFORM_META[key];
+  return meta ? meta.label.replace(/[^A-Za-z\u4e00-\u9fa5]/g, '').charAt(0).toUpperCase() : '?';
+}
+
 // ---------- Agent 徽章配色 ----------
 const AGENT_COLORS = {
   Hermes: { bg: 'hsl(240 5.9% 10%)', fg: '#fff' },
@@ -106,9 +145,32 @@ createApp({
     };
 
     const agentStyle = (agent) => {
+      const meta = PLATFORM_META[agent.toLowerCase().replace(/ /g, '-')];
+      if (meta) return { background: meta.color, color: '#fff' };
       const c = AGENT_COLORS[agent] || { bg: 'hsl(240 5% 60%)', fg: '#fff' };
       return { background: c.bg, color: c.fg };
     };
+
+    // ---------- 平台列表：展开全部 / 隐藏空平台 ----------
+    const showAllPlatforms = ref(localStorage.getItem('showAllPlatforms') === '1');
+    const hideEmptyPlatforms = ref(localStorage.getItem('hideEmptyPlatforms') === '1');
+    function toggleShowAllPlatforms() {
+      showAllPlatforms.value = !showAllPlatforms.value;
+      localStorage.setItem('showAllPlatforms', showAllPlatforms.value ? '1' : '0');
+    }
+    function toggleHideEmptyPlatforms() {
+      hideEmptyPlatforms.value = !hideEmptyPlatforms.value;
+      localStorage.setItem('hideEmptyPlatforms', hideEmptyPlatforms.value ? '1' : '0');
+    }
+    // 侧边栏实际显示的平台列表
+    const visiblePlatforms = computed(() => {
+      let list = sources.value;
+      if (!showAllPlatforms.value) list = list.filter(s => s.count > 0);
+      else if (hideEmptyPlatforms.value) list = list.filter(s => s.count > 0);
+      return list;
+    });
+    // 展开全部时才可能出现 count=0 的平台
+    const hasEmptyPlatforms = computed(() => sources.value.some(s => s.count === 0));
 
     // ---------- 数据加载 ----------
     async function loadSkills() {
@@ -429,6 +491,8 @@ createApp({
       appUpdate, appUpdateChecking, appUpdateDownloading, appUpdateProgress, inTauri,
       checkAppUpdate, installAppUpdate,
       isDark, toggleTheme, appVersion,
+      showAllPlatforms, hideEmptyPlatforms, toggleShowAllPlatforms, toggleHideEmptyPlatforms,
+      visiblePlatforms, hasEmptyPlatforms, platformInitial,
       SCENE_ICONS,
     };
   },
@@ -464,7 +528,19 @@ createApp({
       <!-- Sidebar -->
       <aside class="w-56 border-r p-4 shrink-0 flex flex-col min-h-0">
          <div class="flex-1 overflow-y-auto scrollbar-thin min-h-0">
-         <div class="text-xs font-medium text-muted-foreground mb-2 px-2">Agent</div>
+         <div class="text-xs font-medium text-muted-foreground mb-2 px-2 flex items-center">
+           平台
+           <button class="ml-auto text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                   @click="toggleShowAllPlatforms()"
+                   :title="showAllPlatforms ? '只显示有 skills 的平台' : '展开全部已安装平台'">
+             {{ showAllPlatforms ? '收起' : '展开全部' }}
+           </button>
+         </div>
+         <div v-if="showAllPlatforms && hasEmptyPlatforms" class="flex items-center gap-2 px-2 mb-2">
+           <span class="text-[11px] text-muted-foreground">隐藏空平台</span>
+           <span class="switch ml-auto" :data-on="hideEmptyPlatforms" style="transform:scale(.8)"
+                 @click="toggleHideEmptyPlatforms()"></span>
+         </div>
          <button
            class="w-full text-left px-2 py-1.5 rounded-md text-sm mb-1 transition-colors"
            :class="!activeAgents.length ? 'bg-secondary font-medium' : 'hover:bg-secondary/60'"
@@ -472,12 +548,16 @@ createApp({
            全部
          </button>
          <div class="space-y-1 mb-3">
-           <button v-for="src in sources" :key="src.agent"
+           <button v-for="src in visiblePlatforms" :key="src.agent"
              class="w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2"
              :class="activeAgents.includes(src.agent) ? 'bg-secondary font-medium' : 'hover:bg-secondary/60'"
              @click="toggleAgent(src.agent)">
-             <span class="agent-pill" :style="agentStyle(src.agent)">{{ src.agent }}</span>
-             <span class="ml-auto text-xs text-muted-foreground">{{ src.count }}</span>
+             <!-- 图标：首字母圆角色块 -->
+             <span class="shrink-0 inline-flex items-center justify-center rounded w-4 h-4 text-[9px] font-bold text-white"
+                   :style="{ background: agentStyle(src.agent).background }">{{ platformInitial(src.icon) }}</span>
+             <span class="truncate">{{ src.agent }}</span>
+             <span class="ml-auto text-xs shrink-0"
+                   :class="src.count > 0 ? 'text-muted-foreground' : 'text-muted-foreground/50'">{{ src.count }}</span>
            </button>
          </div>
         <div class="text-xs font-medium text-muted-foreground mb-2 px-2">场景分类</div>
@@ -535,18 +615,6 @@ createApp({
         <div class="text-xs text-muted-foreground mb-3">
           共 <span class="font-semibold text-foreground">{{ stats.total }}</span> 个技能，
           覆盖 <span class="font-semibold text-foreground">{{ sources.length }}</span> 个 Agent
-        </div>
-        <div class="grid gap-3 mb-3" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
-          <div v-for="src in sources" :key="src.agent" class="card p-4 cursor-pointer"
-               :class="activeAgents.includes(src.agent) ? 'ring-2' : 'hover:ring-1'"
-               style="--tw-ring-color: hsl(var(--ring));"
-               @click="toggleAgent(src.agent)">
-            <div class="flex items-center gap-2 h-5">
-              <span class="agent-pill" :style="agentStyle(src.agent)">{{ src.agent }}</span>
-            </div>
-            <div class="text-2xl font-semibold mt-1">{{ src.count }}</div>
-            <div class="text-xs text-muted-foreground mt-0.5">拥有的 skill</div>
-          </div>
         </div>
         <div class="grid grid-cols-3 gap-3 mb-6">
           <div class="card p-4 cursor-pointer"

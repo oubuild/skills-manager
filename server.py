@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -26,14 +27,53 @@ def _run(cmd, timeout):
         encoding="utf-8", errors="replace",
     )
 # ---------------- 多源注册表 ----------------
-AGENT_ORDER = ["Hermes", "Claude", "Codex", "Cursor", "Shared"]
-SOURCES = {
-    "Hermes": HOME / ".hermes" / "skills",
-    "Claude": HOME / ".claude" / "skills",
-    "Codex": HOME / ".codex" / "skills",
-    "Cursor": HOME / ".cursor" / "skills-cursor",
-    "Shared": HOME / ".agents" / "skills",
-}
+AGENT_ORDER = [
+    # (name, home-relative dir, group)
+    ("Hermes", ".hermes/skills", "Coding"),
+    ("Claude", ".claude/skills", "Coding"),
+    ("Codex", ".codex/skills", "Coding"),
+    ("Cursor", ".cursor/skills", "Coding"),
+    ("Copilot", ".copilot/skills", "Coding"),
+    ("Gemini", ".gemini/skills", "Coding"),
+    ("Windsurf", ".windsurf/skills", "Coding"),
+    ("Trae", ".trae/skills", "Coding"),
+    ("Trae CN", ".trae-cn/skills", "Coding"),
+    ("Qwen", ".qwen/skills", "Coding"),
+    ("Qoder", ".qoder/skills", "Coding"),
+    ("Augment", ".augment/skills", "Coding"),
+    ("OpenCode", ".opencode/skills", "Coding"),
+    ("KiloCode", ".kilocode/skills", "Coding"),
+    ("OB1", ".ob1/skills", "Coding"),
+    ("Amp", ".amp/skills", "Coding"),
+    ("Kiro", ".kiro/skills", "Coding"),
+    ("CodeBuddy", ".codebuddy/skills", "Coding"),
+    ("Aider", ".aider/skills", "Coding"),
+    ("Factory", ".factory/skills", "Coding"),
+    ("Junie", ".junie/skills", "Coding"),
+    ("OpenClaw", ".openclaw/skills", "Lobster"),
+    ("QClaw", ".qclaw/skills", "Lobster"),
+    ("EasyClaw", ".easyclaw/skills", "Lobster"),
+    ("EasyClaw V2", ".easyclaw-20260322-01/skills", "Lobster"),
+    ("AutoClaw", ".openclaw-autoclaw/skills", "Lobster"),
+    ("WorkBuddy", ".workbuddy/skills-marketplace/skills", "Lobster"),
+    ("Central", ".agents/skills", "Central"),
+]
+
+
+def _resolve_source_dir(name: str, rel: str) -> Path:
+    """Windows 上先探 %LOCALAPPDATA%\\<首段>\\skills，再回退 ~/<rel>；其他平台直接 ~/rel。"""
+    first_seg = rel.split("/")[0]
+    local = os.environ.get("LOCALAPPDATA")
+    if sys.platform == "win32" and local:
+        cand = Path(local) / first_seg / "skills"
+        if cand.is_dir():
+            return cand
+    return HOME / rel
+
+
+SOURCES = {name: _resolve_source_dir(name, rel) for name, rel, _group in AGENT_ORDER}
+SOURCE_GROUPS = {name: group for name, _rel, group in AGENT_ORDER}
+AGENT_NAMES = [name for name, _rel, _group in AGENT_ORDER]
 ACTIVE_SOURCES = {a: p for a, p in SOURCES.items() if p.is_dir()}
 
 USAGE_FILE = SOURCES["Hermes"] / ".usage.json"
@@ -191,11 +231,13 @@ def collect_skills():
     items.sort(key=lambda s: s["name"])
 
     sources_info = []
-    for agent in AGENT_ORDER:
+    for agent, _rel, group in AGENT_ORDER:
         if agent not in ACTIVE_SOURCES:
             continue
         sources_info.append({
             "agent": agent,
+            "icon": agent.lower().replace(" ", "-"),
+            "group": group,
             "root": str(ACTIVE_SOURCES[agent]),
             "count": sum(1 for it in items if agent in it["agents"]),
         })
@@ -220,7 +262,7 @@ def _build_item(resolved, group, cli_map, usage):
     fm = parse_frontmatter(text)
     name = fm.get("name") or resolved.name
 
-    agents = [a for a in AGENT_ORDER if a in {e["agent"] for e in group}]
+    agents = [a for a in AGENT_NAMES if a in {e["agent"] for e in group}]
     in_hermes = "Hermes" in agents
     cli_meta = match_cli_meta(name, cli_map) if in_hermes else None
     cli_meta = cli_meta or {}
@@ -235,7 +277,7 @@ def _build_item(resolved, group, cli_map, usage):
         "agent": e["agent"],
         "path": str(e["path"]),
         "is_symlink": e["is_symlink"],
-    } for e in sorted(group, key=lambda e: AGENT_ORDER.index(e["agent"]))]
+    } for e in sorted(group, key=lambda e: AGENT_NAMES.index(e["agent"]))]
 
     return {
         "id": encode_id(resolved),

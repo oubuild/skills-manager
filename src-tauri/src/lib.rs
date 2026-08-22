@@ -10,7 +10,157 @@ use serde::Serialize;
 
 // ---------------- 常量 / 源注册表 ----------------
 
-const AGENT_ORDER: &[&str] = &["Hermes", "Claude", "Codex", "Cursor", "Shared"];
+struct AgentDef {
+    name: &'static str,
+    /// 相对 HOME 的目录路径（正斜杠，运行时按平台拼接）
+    dir: &'static str,
+    /// 平台分组：Coding / Lobster / Central
+    group: &'static str,
+}
+
+const AGENTS: &[AgentDef] = &[
+    AgentDef {
+        name: "Hermes",
+        dir: ".hermes/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Claude",
+        dir: ".claude/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Codex",
+        dir: ".codex/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Cursor",
+        dir: ".cursor/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Copilot",
+        dir: ".copilot/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Gemini",
+        dir: ".gemini/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Windsurf",
+        dir: ".windsurf/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Trae",
+        dir: ".trae/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Trae CN",
+        dir: ".trae-cn/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Qwen",
+        dir: ".qwen/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Qoder",
+        dir: ".qoder/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Augment",
+        dir: ".augment/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "OpenCode",
+        dir: ".opencode/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "KiloCode",
+        dir: ".kilocode/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "OB1",
+        dir: ".ob1/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Amp",
+        dir: ".amp/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Kiro",
+        dir: ".kiro/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "CodeBuddy",
+        dir: ".codebuddy/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Aider",
+        dir: ".aider/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Factory",
+        dir: ".factory/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "Junie",
+        dir: ".junie/skills",
+        group: "Coding",
+    },
+    AgentDef {
+        name: "OpenClaw",
+        dir: ".openclaw/skills",
+        group: "Lobster",
+    },
+    AgentDef {
+        name: "QClaw",
+        dir: ".qclaw/skills",
+        group: "Lobster",
+    },
+    AgentDef {
+        name: "EasyClaw",
+        dir: ".easyclaw/skills",
+        group: "Lobster",
+    },
+    AgentDef {
+        name: "EasyClaw V2",
+        dir: ".easyclaw-20260322-01/skills",
+        group: "Lobster",
+    },
+    AgentDef {
+        name: "AutoClaw",
+        dir: ".openclaw-autoclaw/skills",
+        group: "Lobster",
+    },
+    AgentDef {
+        name: "WorkBuddy",
+        dir: ".workbuddy/skills-marketplace/skills",
+        group: "Lobster",
+    },
+    AgentDef {
+        name: "Central",
+        dir: ".agents/skills",
+        group: "Central",
+    },
+];
+
 const USAGE_SUBS: &[&str] = &["references", "scripts", "templates", "agents", "assets"];
 
 fn home() -> PathBuf {
@@ -28,50 +178,28 @@ fn home() -> PathBuf {
 
 fn sources() -> HashMap<String, PathBuf> {
     let h = home();
-    let mut m = HashMap::new();
-
-    // Windows 下各 CLI 的数据目录在 %LOCALAPPDATA%，与 macOS/Linux 的 ~/.xxx 不同
-    if cfg!(target_os = "windows") {
-        let local = std::env::var("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| h.join("AppData").join("Local"));
-
-        m.insert("Hermes".into(), local.join("hermes").join("skills"));
-        m.insert(
-            "Claude".into(),
-            pick_first(&[
-                local.join("claude").join("skills"),
-                local.join("anthropic-claude").join("skills"),
-                h.join(".claude").join("skills"),
-            ]),
-        );
-        m.insert(
-            "Codex".into(),
-            pick_first(&[
-                local.join("codex").join("skills"),
-                h.join(".codex").join("skills"),
-            ]),
-        );
-        m.insert(
-            "Cursor".into(),
-            pick_first(&[
-                local.join("cursor").join("skills-cursor"),
-                h.join(".cursor").join("skills-cursor"),
-            ]),
-        );
-        m.insert(
-            "Shared".into(),
-            pick_first(&[
-                local.join("agents").join("skills"),
-                h.join(".agents").join("skills"),
-            ]),
-        );
+    // Windows 下部分 CLI 数据目录在 %LOCALAPPDATA%，与 ~/.xxx 布局并存
+    let local = if cfg!(target_os = "windows") {
+        Some(
+            std::env::var("LOCALAPPDATA")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| h.join("AppData").join("Local")),
+        )
     } else {
-        m.insert("Hermes".into(), h.join(".hermes").join("skills"));
-        m.insert("Claude".into(), h.join(".claude").join("skills"));
-        m.insert("Codex".into(), h.join(".codex").join("skills"));
-        m.insert("Cursor".into(), h.join(".cursor").join("skills-cursor"));
-        m.insert("Shared".into(), h.join(".agents").join("skills"));
+        None
+    };
+
+    let mut m = HashMap::new();
+    for def in AGENTS {
+        let rel: PathBuf = def.dir.split('/').collect();
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Some(l) = &local {
+            // %LOCALAPPDATA%\<首段目录名>\skills（如 hermes → AppData\Local\hermes\skills）
+            let first_seg = def.dir.split('/').next().unwrap_or(def.dir);
+            candidates.push(l.join(first_seg).join("skills"));
+        }
+        candidates.push(h.join(&rel));
+        m.insert(def.name.to_string(), pick_first(&candidates));
     }
     m
 }
@@ -131,6 +259,8 @@ struct LinkEntry {
 #[derive(Serialize)]
 struct SourceInfo {
     agent: String,
+    icon: String,
+    group: String,
     root: String,
     count: usize,
 }
@@ -553,15 +683,17 @@ fn collect_skills() -> (Vec<SkillItem>, Vec<SourceInfo>, Option<String>) {
     }
     items.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let sources_info: Vec<SourceInfo> = AGENT_ORDER
+    let sources_info: Vec<SourceInfo> = AGENTS
         .iter()
-        .filter(|a| active.contains_key(**a))
+        .filter(|a| active.contains_key(a.name))
         .map(|a| SourceInfo {
-            agent: a.to_string(),
-            root: active[*a].to_string_lossy().to_string(),
+            agent: a.name.to_string(),
+            icon: a.name.to_lowercase().replace(' ', "-"),
+            group: a.group.to_string(),
+            root: active[a.name].to_string_lossy().to_string(),
             count: items
                 .iter()
-                .filter(|it| it.agents.contains(&a.to_string()))
+                .filter(|it| it.agents.contains(&a.name.to_string()))
                 .count(),
         })
         .collect();
@@ -601,10 +733,10 @@ fn build_item(
             .to_string()
     });
 
-    let agents: Vec<String> = AGENT_ORDER
+    let agents: Vec<String> = AGENTS
         .iter()
-        .filter(|a| group.iter().any(|e| &e.agent == **a))
-        .map(|s| s.to_string())
+        .filter(|a| group.iter().any(|e| e.agent == a.name))
+        .map(|a| a.name.to_string())
         .collect();
     let in_hermes = agents.iter().any(|a| a == "Hermes");
     let cli_meta = if in_hermes {
