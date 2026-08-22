@@ -104,14 +104,18 @@ jobs:
           args: --target ${{ matrix.target }} ${{ runner.os == 'macOS' && '--bundles app' || '' }}
 
       # macOS: 用 hdiutil 直接打 DMG（绕过 flaky 的 bundle_dmg.sh）
+      # 镜像内含 app + Applications 软链，用户打开后可直接拖拽安装
       - name: Build DMG (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          VERSION=$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          VERSION="${GITHUB_REF_NAME#v}"
+          STAGING=$(mktemp -d)
+          cp -R "src-tauri/target/${{ matrix.target }}/release/bundle/macos/Skills Manager.app" "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
           mkdir -p "src-tauri/target/${{ matrix.target }}/release/bundle/dmg"
           hdiutil create -volname "Skills Manager" \
-            -srcfolder "src-tauri/target/${{ matrix.target }}/release/bundle/macos/Skills Manager.app" \
+            -srcfolder "$STAGING" \
             -ov -format UDZO \
             "src-tauri/target/${{ matrix.target }}/release/bundle/dmg/Skills Manager_${VERSION}_aarch64.dmg"
 
