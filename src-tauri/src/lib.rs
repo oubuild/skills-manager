@@ -12,7 +12,7 @@ use std::os::windows::process::CommandExt;
 /// Windows 下隐藏子进程弹出的控制台窗口（CREATE_NO_WINDOW）；非 Windows 平台为 no-op。
 fn hide_window(_cmd: &mut Command) {
     #[cfg(windows)]
-    cmd.creation_flags(0x08000000);
+    _cmd.creation_flags(0x08000000);
 }
 
 use serde::Serialize;
