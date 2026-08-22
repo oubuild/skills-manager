@@ -164,21 +164,28 @@ const AGENTS: &[AgentDef] = &[
 const USAGE_SUBS: &[&str] = &["references", "scripts", "templates", "agents", "assets"];
 
 fn home() -> PathBuf {
-    // Windows 没有 HOME，只有 USERPROFILE
-    std::env::var(if cfg!(target_os = "windows") {
-        "USERPROFILE"
-    } else {
-        "HOME"
-    })
-    .or_else(|_| std::env::var("HOME"))
-    .or_else(|_| std::env::var("USERPROFILE"))
-    .unwrap_or_else(|_| "/".to_string())
-    .into()
+    // Windows 用户目录获取：多级回退，绝不直接兜底成 "/"
+    if cfg!(target_os = "windows") {
+        if let Ok(p) = std::env::var("USERPROFILE") {
+            return PathBuf::from(p);
+        }
+        if let (Ok(d), Ok(p)) = (std::env::var("HOMEDRIVE"), std::env::var("HOMEPATH")) {
+            return PathBuf::from(format!("{}{}", d, p));
+        }
+        if let Ok(u) = std::env::var("USERNAME") {
+            return PathBuf::from(format!("C:\\Users\\{}", u));
+        }
+        // Tauri 打包 exe 偶尔环境精简，兜底到常见默认位置
+        return PathBuf::from("C:\\Users");
+    }
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/"))
 }
 
 fn sources() -> HashMap<String, PathBuf> {
     let h = home();
-    // Windows 下部分 CLI 数据目录在 %LOCALAPPDATA%，与 ~/.xxx 布局并存
+    // Windows 下部分 CLI 数据目录在 %LOCALAPPDATA%，与 %USERPROFILE%\.xxx 布局并存
     let local = if cfg!(target_os = "windows") {
         Some(
             std::env::var("LOCALAPPDATA")
@@ -192,25 +199,34 @@ fn sources() -> HashMap<String, PathBuf> {
     let mut m = HashMap::new();
     for def in AGENTS {
         let rel: PathBuf = def.dir.split('/').collect();
+        let first_seg = def.dir.split('/').next().unwrap_or(def.dir);
         let mut candidates: Vec<PathBuf> = Vec::new();
+        // 精确路径：USERPROFILE\.xxx\skills（Claude/Cursor 等）与 LOCALAPPDATA\xxx\skills（Hermes 等）两种布局都加
+        candidates.push(h.join(&rel));
         if let Some(l) = &local {
-            // %LOCALAPPDATA%\<首段目录名>\skills（如 hermes → AppData\Local\hermes\skills）
-            let first_seg = def.dir.split('/').next().unwrap_or(def.dir);
             candidates.push(l.join(first_seg).join("skills"));
         }
-        candidates.push(h.join(&rel));
-        m.insert(def.name.to_string(), pick_first(&candidates));
+        // 模糊匹配：父目录（<agent> 目录）下所有以 skills 为前缀的子目录（如 .cursor/skills、.cursor/skills-xxx）
+        let parent = h.join(first_seg);
+        if let Ok(entries) = std::fs::read_dir(&parent) {
+            for e in entries.flatten() {
+                let nm = e.file_name().to_string_lossy().to_string();
+                if nm.starts_with("skills") && e.path().is_dir() {
+                    candidates.push(e.path());
+                }
+            }
+        }
+        // 去重
+        let mut seen = std::collections::HashSet::new();
+        candidates.retain(|p| seen.insert(p.clone()));
+        m.insert(def.name.to_string(), pick_first(&candidates).unwrap_or_else(|| h.join(&rel)));
     }
     m
 }
 
-// 返回第一个已存在的候选路径；都不存在时返回最后一个（保持语义一致）
-fn pick_first(candidates: &[PathBuf]) -> PathBuf {
-    candidates
-        .iter()
-        .find(|p| p.is_dir())
-        .cloned()
-        .unwrap_or_else(|| candidates[candidates.len() - 1].to_path_buf())
+// 返回第一个已存在的候选路径；都不存在时返回 None（避免把不存在路径当根扫描）
+fn pick_first(candidates: &[PathBuf]) -> Option<PathBuf> {
+    candidates.iter().find(|p| p.is_dir()).cloned()
 }
 
 fn active_sources() -> HashMap<String, PathBuf> {
