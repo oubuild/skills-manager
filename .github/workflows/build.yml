@@ -152,7 +152,7 @@ jobs:
 
           version = os.environ["GITHUB_REF_NAME"].lstrip("v")
           tag = os.environ["GITHUB_REF_NAME"]
-          base = f"https://cnb.cool/oubuild/skills-manager/-/releases/download/{tag}"
+          base = f"https://cnb.cool/ryanuo/skills-manager/-/releases/download/{tag}"
 
           def find(pattern):
               files = sorted(glob.glob(f"dist/{pattern}"))
