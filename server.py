@@ -337,6 +337,12 @@ class Handler(BaseHTTPRequestHandler):
             self._error(404, "not found")
         elif path == "/api/updates":
             self._check_updates()
+        elif path == "/api/app_version":
+            try:
+                conf = json.loads((Path(__file__).parent / "src-tauri" / "tauri.conf.json").read_text())
+                self._json(200, {"version": conf.get("version", "")})
+            except Exception as e:
+                self._error(500, str(e))
         elif path == "/" or path == "/index.html":
             self._serve_static("index.html")
         elif path.startswith("/static/"):

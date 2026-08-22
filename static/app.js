@@ -399,12 +399,15 @@ createApp({
     onMounted(() => {
       loadSkills();
       checkUpdates(false);
-      // 读取应用版本号（Tauri 端）
+      // 读取应用版本号：桌面端走 Tauri API，网页端走后端接口
       if (inTauri) {
         const invoke = window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke;
         if (typeof invoke === 'function') {
           invoke('plugin:app|version').then(v => appVersion.value = v).catch(() => {});
         }
+      } else {
+        fetch('/api/app_version').then(r => r.json())
+          .then(d => appVersion.value = d.version || '').catch(() => {});
       }
     });
 
@@ -511,7 +514,7 @@ createApp({
             {{ isDark ? '深色模式' : '浅色模式' }}
             <span class="switch ml-auto" :data-on="isDark" style="pointer-events:none"></span>
           </button>
-          <button v-if="inTauri"
+          <button
             class="w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2 hover:bg-secondary/60"
             :disabled="appUpdateChecking || appUpdateDownloading"
             @click="checkAppUpdate()">
