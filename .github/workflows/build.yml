@@ -75,7 +75,21 @@ jobs:
         with:
           projectPath: .
           tauriScript: npx tauri
-          args: --target ${{ matrix.target }}
+          # macOS 跳过 bundle_dmg.sh（macos-15 ARM runner 上依赖 Finder/AppleScript 易卡死）
+          # 只打 app 包（生成 .app.tar.gz 更新产物），DMG 由后续步骤用 hdiutil 手动创建
+          args: --target ${{ matrix.target }} ${{ runner.os == 'macOS' && '--bundles app' || '' }}
+
+      # macOS: 用 hdiutil 直接打 DMG（绕过 flaky 的 bundle_dmg.sh）
+      - name: Build DMG (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          VERSION=$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          mkdir -p "src-tauri/target/${{ matrix.target }}/release/bundle/dmg"
+          hdiutil create -volname "Skills Manager" \
+            -srcfolder "src-tauri/target/${{ matrix.target }}/release/bundle/macos/Skills Manager.app" \
+            -ov -format UDZO \
+            "src-tauri/target/${{ matrix.target }}/release/bundle/dmg/Skills Manager_${VERSION}_aarch64.dmg"
 
       # ---- 归集产物（各平台 bundle 路径不同）----
       - name: Collect artifacts (macOS)
