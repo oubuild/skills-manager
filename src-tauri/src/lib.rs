@@ -212,9 +212,12 @@ fn sources() -> HashMap<String, PathBuf> {
         let mut candidates: Vec<PathBuf> = Vec::new();
         // 精确路径：USERPROFILE\.xxx\skills（Claude/Cursor 等）与 LOCALAPPDATA\xxx\skills（Hermes 等）两种布局都加
         candidates.push(h.join(&rel));
-        if let Some(l) = &local {
-            candidates.push(l.join(first_seg).join("skills"));
-        }
+        // LOCALAPPDATA\xxx\skills（Hermes 等）：即使 LOCALAPPDATA 环境变量取不到，
+        // 也用 home\AppData\Local 兜底算出（Tauri 打包 exe 环境可能精简掉该变量）
+        let local_base = local
+            .clone()
+            .unwrap_or_else(|| h.join("AppData").join("Local"));
+        candidates.push(local_base.join(first_seg).join("skills"));
         // 模糊匹配：父目录（<agent> 目录）下所有以 skills 为前缀的子目录（如 .cursor/skills、.cursor/skills-xxx）
         let parent = h.join(first_seg);
         if let Ok(entries) = std::fs::read_dir(&parent) {
@@ -913,9 +916,8 @@ fn debug_sources() -> serde_json::Value {
         let first_seg = def.dir.split('/').next().unwrap_or(def.dir);
         let mut candidates: Vec<String> = Vec::new();
         candidates.push(h.join(&rel).to_string_lossy().to_string());
-        if let Some(l) = &local {
-            candidates.push(PathBuf::from(l).join(first_seg).join("skills").to_string_lossy().to_string());
-        }
+        let local_base = local.as_ref().map(PathBuf::from).unwrap_or_else(|| h.join("AppData").join("Local"));
+        candidates.push(local_base.join(first_seg).join("skills").to_string_lossy().to_string());
         let picked = sources().get(def.name).map(|p| p.to_string_lossy().to_string());
         agents.insert(
             def.name.to_string(),
