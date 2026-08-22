@@ -428,7 +428,13 @@ class Handler(BaseHTTPRequestHandler):
         elif path.startswith("/static/"):
             self._serve_static(path[len("/static/"):])
         else:
-            self._error(404, "not found")
+            # 根路径直接请求静态资源（dev 模式下 index.html 用 ./app.js 等相对引用）
+            rel = path.lstrip("/")
+            candidate = (STATIC_DIR / rel).resolve()
+            if candidate.is_file() and str(candidate).startswith(str(STATIC_DIR.resolve())):
+                self._serve_static(rel)
+            else:
+                self._error(404, "not found")
 
     def _get_skill_detail(self, skill_id):
         item, _group = find_item(skill_id)

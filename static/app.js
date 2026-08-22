@@ -194,8 +194,11 @@ createApp({
 
     async function checkUpdates(openDialog = true) {
       updatesLoading.value = true;
+      // hermes skills check 是慢 CLI（实测 7s+ 且只查少量 skill），加前端超时避免永久转圈
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('检查超时（15s），请稍后重试或检查网络')), 15000));
       try {
-        updates.value = await api('check_updates');
+        updates.value = await Promise.race([api('check_updates'), timeout]);
         if (openDialog) openUpdateDialog();
       } catch (e) {
         // Tauri invoke 的错误是 {error: "..."} 对象或纯字符串，不是 Error 实例
@@ -469,7 +472,8 @@ createApp({
 
     onMounted(() => {
       loadSkills();
-      checkUpdates(false);
+      // 延迟触发检查更新：hermes skills check 是慢 CLI，避免一启动就卡住界面
+      setTimeout(() => checkUpdates(false), 2000);
       // 读取应用版本号：桌面端走 Tauri API，网页端走后端接口
       if (inTauri) {
         const invoke = window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke;

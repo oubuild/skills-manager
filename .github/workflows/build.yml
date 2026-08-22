@@ -82,13 +82,8 @@ jobs:
           p = "src-tauri/tauri.conf.json"
           conf = json.load(open(p, encoding="utf-8"))
           conf["version"] = v
-          # 同步 updater endpoint 里的版本号（cnb.cool 无 latest 别名，必须版本化路径）
-          eps = conf.get("plugins", {}).get("updater", {}).get("endpoints", [])
-          new_eps = []
-          for ep in eps:
-              new_eps.append(re.sub(r"/download/v[^/]+/latest\.json$", f"/download/v{v}/latest.json", ep))
-          if new_eps:
-              conf["plugins"]["updater"]["endpoints"] = new_eps
+          # 注：endpoint 使用 GitHub 的 latest 动态别名（无需版本化路径），
+          # 故此处不同步 endpoint 版本号；若改回 cnb.cool 需重新加回版本替换。
           with open(p, "w", encoding="utf-8") as f:
               json.dump(conf, f, indent=2, ensure_ascii=False)
               f.write("\n")
