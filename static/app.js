@@ -84,6 +84,21 @@ createApp({
     const showPinned = ref(false);    // 只看已固定
     const showArchived = ref(false);  // 只看已停用
 
+    // ---------- 暗色模式 ----------
+    const isDark = ref(localStorage.getItem('theme') === 'dark');
+    function applyTheme() {
+      document.documentElement.classList.toggle('dark', isDark.value);
+      localStorage.setItem('theme', isDark.value ? 'dark' : 'light');
+    }
+    function toggleTheme() {
+      isDark.value = !isDark.value;
+      applyTheme();
+    }
+    applyTheme();
+
+    // ---------- 当前版本号 ----------
+    const appVersion = ref('');
+
     const showToast = (msg, type = 'success') => {
       toast.value = { msg, type };
       clearTimeout(toastTimer);
@@ -384,6 +399,13 @@ createApp({
     onMounted(() => {
       loadSkills();
       checkUpdates(false);
+      // 读取应用版本号（Tauri 端）
+      if (inTauri) {
+        const invoke = window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke;
+        if (typeof invoke === 'function') {
+          invoke('plugin:app|version').then(v => appVersion.value = v).catch(() => {});
+        }
+      }
     });
 
     return {
@@ -401,6 +423,7 @@ createApp({
       openExternal,
       appUpdate, appUpdateChecking, appUpdateDownloading, appUpdateProgress, inTauri,
       checkAppUpdate, installAppUpdate,
+      isDark, toggleTheme, appVersion,
       SCENE_ICONS,
     };
   },
@@ -421,9 +444,6 @@ createApp({
             {{ updatesLoading ? '检查中…' : '检查更新' }}
             <span v-if="updates && updates.count > 0" class="badge badge-destructive ml-1">{{ updates.count }}</span>
           </button>
-          <button v-if="inTauri" class="btn btn-outline btn-sm" @click="checkAppUpdate()" :disabled="appUpdateChecking">
-            {{ appUpdateChecking ? '检查中…' : '⬆ 应用更新' }}
-          </button>
           <button class="btn btn-default btn-sm" @click="installDialog = true">+ 安装 Skill</button>
           <a href="https://github.com/oubuild/skills-manager" @click.prevent="openExternal('https://github.com/oubuild/skills-manager')"
              class="btn btn-outline btn-icon" title="在 GitHub 上查看此项目" aria-label="GitHub 仓库">
@@ -437,7 +457,8 @@ createApp({
 
     <div class="flex flex-1 overflow-hidden min-h-0">
       <!-- Sidebar -->
-      <aside class="w-56 border-r p-4 overflow-y-auto scrollbar-thin shrink-0">
+      <aside class="w-56 border-r p-4 shrink-0 flex flex-col min-h-0">
+         <div class="flex-1 overflow-y-auto scrollbar-thin min-h-0">
          <div class="text-xs font-medium text-muted-foreground mb-2 px-2">Agent</div>
          <button
            class="w-full text-left px-2 py-1.5 rounded-md text-sm mb-1 transition-colors"
@@ -478,6 +499,28 @@ createApp({
               {{ cat }}
             </button>
           </div>
+        </div>
+         </div><!-- /菜单滚动区 -->
+
+        <!-- 底部：暗色模式 + 应用版本/更新（固定不随菜单滚动） -->
+        <div class="pt-3 border-t space-y-1 shrink-0">
+          <button
+            class="w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2 hover:bg-secondary/60"
+            @click="toggleTheme">
+            <span class="text-muted-foreground w-4">{{ isDark ? '🌙' : '☀️' }}</span>
+            {{ isDark ? '深色模式' : '浅色模式' }}
+            <span class="switch ml-auto" :data-on="isDark" style="pointer-events:none"></span>
+          </button>
+          <button v-if="inTauri"
+            class="w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2 hover:bg-secondary/60"
+            :disabled="appUpdateChecking || appUpdateDownloading"
+            @click="checkAppUpdate()">
+            <span class="text-muted-foreground w-4">⬡</span>
+            <span class="font-mono text-xs">v{{ appVersion || '…' }}</span>
+            <!-- 有新版本时右侧显示可更新图标 -->
+            <span v-if="appUpdate" class="ml-auto badge badge-destructive animate-pulse" title="有新版本">↑ 可更新</span>
+            <span v-else-if="appUpdateChecking" class="ml-auto text-xs text-muted-foreground">检查中…</span>
+          </button>
         </div>
       </aside>
 
