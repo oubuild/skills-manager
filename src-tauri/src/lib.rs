@@ -262,6 +262,7 @@ struct SourceInfo {
     icon: String,
     group: String,
     root: String,
+    installed: bool,
     count: usize,
 }
 
@@ -685,16 +686,23 @@ fn collect_skills() -> (Vec<SkillItem>, Vec<SourceInfo>, Option<String>) {
 
     let sources_info: Vec<SourceInfo> = AGENTS
         .iter()
-        .filter(|a| active.contains_key(a.name))
-        .map(|a| SourceInfo {
-            agent: a.name.to_string(),
-            icon: a.name.to_lowercase().replace(' ', "-"),
-            group: a.group.to_string(),
-            root: active[a.name].to_string_lossy().to_string(),
-            count: items
+        .map(|a| {
+            // 未安装的平台也返回（count=0, installed=false），由前端控制显隐
+            let count = items
                 .iter()
                 .filter(|it| it.agents.contains(&a.name.to_string()))
-                .count(),
+                .count();
+            SourceInfo {
+                agent: a.name.to_string(),
+                icon: a.name.to_lowercase().replace(' ', "-"),
+                group: a.group.to_string(),
+                root: active
+                    .get(a.name)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                installed: active.contains_key(a.name),
+                count,
+            }
         })
         .collect();
 

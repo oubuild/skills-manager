@@ -151,26 +151,20 @@ createApp({
       return { background: c.bg, color: c.fg };
     };
 
-    // ---------- 平台列表：展开全部 / 隐藏空平台 ----------
-    const showAllPlatforms = ref(localStorage.getItem('showAllPlatforms') === '1');
-    const hideEmptyPlatforms = ref(localStorage.getItem('hideEmptyPlatforms') === '1');
+    // ---------- 平台列表：展开全部（默认收起，不持久化，每次打开都收起） ----------
+    const showAllPlatforms = ref(false);
     function toggleShowAllPlatforms() {
       showAllPlatforms.value = !showAllPlatforms.value;
-      localStorage.setItem('showAllPlatforms', showAllPlatforms.value ? '1' : '0');
-    }
-    function toggleHideEmptyPlatforms() {
-      hideEmptyPlatforms.value = !hideEmptyPlatforms.value;
-      localStorage.setItem('hideEmptyPlatforms', hideEmptyPlatforms.value ? '1' : '0');
     }
     // 侧边栏实际显示的平台列表
     const visiblePlatforms = computed(() => {
-      let list = sources.value;
-      if (!showAllPlatforms.value) list = list.filter(s => s.count > 0);
-      else if (hideEmptyPlatforms.value) list = list.filter(s => s.count > 0);
-      return list;
+      if (!showAllPlatforms.value) return sources.value.filter(s => s.count > 0);
+      // 展开全部：列出全部注册平台（含未安装，灰色弱化）
+      return sources.value;
     });
-    // 展开全部时才可能出现 count=0 的平台
-    const hasEmptyPlatforms = computed(() => sources.value.some(s => s.count === 0));
+
+    // 实际检测到安装的平台数
+    const installedCount = computed(() => sources.value.filter(s => s.installed).length);
 
     // ---------- 数据加载 ----------
     async function loadSkills() {
@@ -491,8 +485,8 @@ createApp({
       appUpdate, appUpdateChecking, appUpdateDownloading, appUpdateProgress, inTauri,
       checkAppUpdate, installAppUpdate,
       isDark, toggleTheme, appVersion,
-      showAllPlatforms, hideEmptyPlatforms, toggleShowAllPlatforms, toggleHideEmptyPlatforms,
-      visiblePlatforms, hasEmptyPlatforms, platformInitial,
+      showAllPlatforms, toggleShowAllPlatforms,
+      visiblePlatforms, platformInitial, installedCount,
       SCENE_ICONS,
     };
   },
@@ -532,14 +526,9 @@ createApp({
            平台
            <button class="ml-auto text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                    @click="toggleShowAllPlatforms()"
-                   :title="showAllPlatforms ? '只显示有 skills 的平台' : '展开全部已安装平台'">
+                   :title="showAllPlatforms ? '只显示有 skills 的平台' : '展开全部平台'">
              {{ showAllPlatforms ? '收起' : '展开全部' }}
            </button>
-         </div>
-         <div v-if="showAllPlatforms && hasEmptyPlatforms" class="flex items-center gap-2 px-2 mb-2">
-           <span class="text-[11px] text-muted-foreground">隐藏空平台</span>
-           <span class="switch ml-auto" :data-on="hideEmptyPlatforms" style="transform:scale(.8)"
-                 @click="toggleHideEmptyPlatforms()"></span>
          </div>
          <button
            class="w-full text-left px-2 py-1.5 rounded-md text-sm mb-1 transition-colors"
@@ -550,7 +539,11 @@ createApp({
          <div class="space-y-1 mb-3">
            <button v-for="src in visiblePlatforms" :key="src.agent"
              class="w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2"
-             :class="activeAgents.includes(src.agent) ? 'bg-secondary font-medium' : 'hover:bg-secondary/60'"
+             :class="[
+               activeAgents.includes(src.agent) ? 'bg-secondary font-medium' : 'hover:bg-secondary/60',
+               src.count === 0 ? 'opacity-50' : ''
+             ]"
+             :title="src.count === 0 ? '未检测到该平台或暂无 skills' : ''"
              @click="toggleAgent(src.agent)">
              <!-- 图标：首字母圆角色块 -->
              <span class="shrink-0 inline-flex items-center justify-center rounded w-4 h-4 text-[9px] font-bold text-white"
@@ -614,7 +607,7 @@ createApp({
         <!-- Stats -->
         <div class="text-xs text-muted-foreground mb-3">
           共 <span class="font-semibold text-foreground">{{ stats.total }}</span> 个技能，
-          覆盖 <span class="font-semibold text-foreground">{{ sources.length }}</span> 个 Agent
+          覆盖 <span class="font-semibold text-foreground">{{ installedCount }}</span> 个平台
         </div>
         <div class="grid grid-cols-3 gap-3 mb-6">
           <div class="card p-4 cursor-pointer"

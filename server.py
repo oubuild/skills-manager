@@ -232,14 +232,15 @@ def collect_skills():
 
     sources_info = []
     for agent, _rel, group in AGENT_ORDER:
-        if agent not in ACTIVE_SOURCES:
-            continue
+        installed = agent in ACTIVE_SOURCES
         sources_info.append({
             "agent": agent,
             "icon": agent.lower().replace(" ", "-"),
             "group": group,
-            "root": str(ACTIVE_SOURCES[agent]),
-            "count": sum(1 for it in items if agent in it["agents"]),
+            "root": str(ACTIVE_SOURCES.get(agent, "")),
+            "installed": installed,
+            # 未安装平台 count 恒为 0
+            "count": sum(1 for it in items if agent in it["agents"]) if installed else 0,
         })
     return items, sources_info, cli_err
 
