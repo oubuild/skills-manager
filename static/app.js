@@ -121,7 +121,7 @@ createApp({
          sources.value = d.sources || [];
         if (d.warning) console.warn('[skills] ' + d.warning);
       } catch (e) {
-        error.value = '加载失败: ' + e.message;
+        error.value = '加载失败: ' + (e?.message || e?.error || e);
       } finally {
         loading.value = false;
       }
@@ -133,7 +133,9 @@ createApp({
         updates.value = await api('check_updates');
         if (openDialog) openUpdateDialog();
       } catch (e) {
-        showToast('检查更新失败: ' + e.message, 'error');
+        // Tauri invoke 的错误是 {error: "..."} 对象或纯字符串，不是 Error 实例
+        const msg = e?.message || e?.error || (typeof e === 'string' ? e : String(e));
+        showToast('检查更新失败: ' + msg, 'error');
       } finally {
         updatesLoading.value = false;
       }
@@ -158,7 +160,7 @@ createApp({
           updates.value = await api('check_updates');
         }
       } catch (e) {
-        updateResult.value = { ok: false, stderr: e.message };
+        updateResult.value = { ok: false, stderr: e?.message || e?.error || e };
       } finally {
         updatingName.value = '';
         updating.value = false;
@@ -175,7 +177,7 @@ createApp({
         if (d.error) throw new Error(d.error);
         detail.value = { ...s, content: d.content, files: d.files };
       } catch (e) {
-        showToast('加载详情失败: ' + e.message, 'error');
+        showToast('加载详情失败: ' + (e?.message || e?.error || e), 'error');
         detail.value = null;
       } finally {
         detailLoading.value = false;
@@ -204,7 +206,7 @@ createApp({
         const fresh = skills.value.find(x => x.id === detail.value.id);
         if (fresh) detail.value = { ...fresh, content: detail.value.content, files: detail.value.files };
       } catch (e) {
-        showToast('链接失败: ' + e.message, 'error');
+        showToast('链接失败: ' + (e?.message || e?.error || e), 'error');
       }
     }
 
@@ -218,7 +220,7 @@ createApp({
         if (detail.value?.id === s.id) detail.value.pinned = d.pinned;
         showToast(d.pinned ? `已固定 ${s.name}` : `已取消固定 ${s.name}`);
       } catch (e) {
-        showToast('操作失败: ' + e.message, 'error');
+        showToast('操作失败: ' + (e?.message || e?.error || e), 'error');
       }
     }
 
@@ -232,7 +234,7 @@ createApp({
         if (detail.value?.id === s.id) detail.value.state = d.state;
         showToast(d.state === 'active' ? `已启用 ${s.name}` : `已停用 ${s.name}`);
       } catch (e) {
-        showToast('操作失败: ' + e.message, 'error');
+        showToast('操作失败: ' + (e?.message || e?.error || e), 'error');
       }
     }
 
@@ -259,7 +261,7 @@ createApp({
         deleteTarget.value = null;
         deleteAgent.value = '';
       } catch (e) {
-        showToast('删除失败: ' + e.message, 'error');
+        showToast('删除失败: ' + (e?.message || e?.error || e), 'error');
       } finally {
         deleteLoading.value = false;
       }
@@ -277,7 +279,7 @@ createApp({
           await loadSkills();
         }
       } catch (e) {
-        installResult.value = { ok: false, stderr: e.message };
+        installResult.value = { ok: false, stderr: e?.message || e?.error || e };
       } finally {
         installLoading.value = false;
       }
@@ -365,7 +367,7 @@ createApp({
           showToast('已是最新版本');
         }
       } catch (e) {
-        showToast('检查应用更新失败: ' + (e.message || e), 'error');
+        showToast('检查应用更新失败: ' + (e?.message || e?.error || e), 'error');
       } finally {
         appUpdateChecking.value = false;
       }
@@ -391,7 +393,7 @@ createApp({
         // 安装完成后重启（updater 替换二进制）
         await relaunch();
       } catch (e) {
-        showToast('更新失败: ' + (e.message || e), 'error');
+        showToast('更新失败: ' + (e?.message || e?.error || e), 'error');
         appUpdateDownloading.value = false;
       }
     }
