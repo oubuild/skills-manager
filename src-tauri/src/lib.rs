@@ -6,6 +6,15 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// Windows 下隐藏子进程弹出的控制台窗口（CREATE_NO_WINDOW）；非 Windows 平台为 no-op。
+fn hide_window(_cmd: &mut Command) {
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000);
+}
+
 use serde::Serialize;
 
 // ---------------- 常量 / 源注册表 ----------------
@@ -569,10 +578,11 @@ fn shell_path() -> String {
 fn hermes_available() -> bool {
     let path = shell_path();
     if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(["/c", "where", "hermes"])
-            .env("PATH", &path)
-            .output()
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/c", "where", "hermes"])
+            .env("PATH", &path);
+        hide_window(&mut cmd);
+        cmd.output()
             .map(|o| o.status.success())
             .unwrap_or(false)
     } else {
@@ -591,7 +601,11 @@ fn run_hermes(args: &[&str], timeout_secs: u64) -> Result<String, String> {
     let r = if cfg!(target_os = "windows") {
         let mut full = vec!["/c", "hermes"];
         full.extend_from_slice(args);
-        Command::new("cmd").args(&full).env("PATH", &path).output()
+        let mut cmd = Command::new("cmd");
+        cmd.args(&full)
+            .env("PATH", &path);
+        hide_window(&mut cmd);
+        cmd.output()
     } else {
         Command::new("hermes")
             .args(args)
@@ -885,6 +899,43 @@ fn find_item(skill_id: &str) -> Option<(SkillItem, Vec<Entry>)> {
 // ---------------- Tauri 命令 ----------------
 
 #[tauri::command]
+fn debug_sources() -> serde_json::Value {
+    // Windows 诊断：返回每个 agent 的真实候选路径与选中结果，以及环境变量取值
+    let h = home();
+    let local = if cfg!(target_os = "windows") {
+        std::env::var("LOCALAPPDATA").ok()
+    } else {
+        None
+    };
+    let mut agents = serde_json::Map::new();
+    for def in AGENTS {
+        let rel: PathBuf = def.dir.split('/').collect();
+        let first_seg = def.dir.split('/').next().unwrap_or(def.dir);
+        let mut candidates: Vec<String> = Vec::new();
+        candidates.push(h.join(&rel).to_string_lossy().to_string());
+        if let Some(l) = &local {
+            candidates.push(PathBuf::from(l).join(first_seg).join("skills").to_string_lossy().to_string());
+        }
+        let picked = sources().get(def.name).map(|p| p.to_string_lossy().to_string());
+        agents.insert(
+            def.name.to_string(),
+            serde_json::json!({
+                "candidates": candidates,
+                "picked": picked,
+                "exists": picked.as_ref().map(|p| Path::new(p).is_dir()).unwrap_or(false),
+            }),
+        );
+    }
+    serde_json::json!({
+        "home": h.to_string_lossy().to_string(),
+        "LOCALAPPDATA": local,
+        "USERPROFILE": std::env::var("USERPROFILE").ok(),
+        "is_windows": cfg!(target_os = "windows"),
+        "agents": agents,
+    })
+}
+
+#[tauri::command]
 fn get_skills() -> Result<SkillsResponse, ApiError> {
     let (skills, sources, warning) = collect_skills();
     Ok(SkillsResponse {
@@ -1053,9 +1104,10 @@ fn link_skill(id: String, agent: String) -> Result<SimpleResult, ApiError> {
         });
     }
     if is_windows() {
-        let r = Command::new("cmd")
-            .args(["/c", "mklink", "/J", &target.to_string_lossy(), &item.path])
-            .output();
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/c", "mklink", "/J", &target.to_string_lossy(), &item.path]);
+        hide_window(&mut cmd);
+        let r = cmd.output();
         if let Ok(o) = r {
             if !o.status.success() {
                 return Err(ApiError {
@@ -1239,6 +1291,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
+            debug_sources,
             get_skills,
             get_skill_detail,
             check_updates,
