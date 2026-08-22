@@ -66,6 +66,30 @@ jobs:
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
+      # 版本号统一以 git tag 为准：构建前同步到 tauri.conf.json / Cargo.toml
+      # （bumpp 只更新 package.json，Tauri 打包读的是 tauri.conf.json，必须显式同步）
+      - name: Sync version from tag (before build)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 - "$VERSION" <<'EOF'
+          import json, re, sys
+          v = sys.argv[1]
+          # tauri.conf.json
+          p = "src-tauri/tauri.conf.json"
+          conf = json.load(open(p))
+          conf["version"] = v
+          json.dump(conf, open(p, "w"), indent=2, ensure_ascii=False)
+          open(p, "a").write("\n")
+          # Cargo.toml
+          p = "src-tauri/Cargo.toml"
+          s = open(p).read()
+          s = re.sub(r'(?m)^version = "[^"]*"', f'version = "{v}"', s, count=1)
+          open(p, "w").write(s)
+          print("synced version:", v)
+          EOF
+
       - name: Build Tauri app (signed for updater)
         uses: tauri-apps/tauri-action@v0
         env:
