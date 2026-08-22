@@ -146,61 +146,53 @@ jobs:
           merge-multiple: true
 
       - name: Generate latest.json
+        shell: python3 {0}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          BASE="https://github.com/oubuild/skills-manager/releases/download/${GITHUB_REF_NAME}"
-          CNB_BASE="https://cnb.cool/oubuild/skills-manager/-/releases/latest/download"
-          
-          # macOS
-          SIG_MAC=""
-          MAC_TAR=""
-          if ls dist/*.app.tar.gz 1>/dev/null 2>&1; then
-            SIG_MAC=$(cat dist/*.app.tar.gz.sig 2>/dev/null | head -1 || echo "")
-            MAC_TAR=$(ls dist/*.app.tar.gz | xargs -n1 basename)
-          fi
-          
-          # Windows
-          SIG_WIN=""
-          WIN_UPD=""
-          if ls dist/*.msi.zip 1>/dev/null 2>&1; then
-            SIG_WIN=$(cat dist/*.msi.zip.sig 2>/dev/null | head -1 || echo "")
-            WIN_UPD=$(ls dist/*.msi.zip | xargs -n1 basename)
-          elif ls dist/*.exe.zip 1>/dev/null 2>&1; then
-            SIG_WIN=$(cat dist/*.exe.zip.sig 2>/dev/null | head -1 || echo "")
-            WIN_UPD=$(ls dist/*.exe.zip | xargs -n1 basename)
-          fi
-          
-          # Linux
-          SIG_LINUX=""
-          LINUX_UPD=""
-          if ls dist/*.AppImage.tar.gz 1>/dev/null 2>&1; then
-            SIG_LINUX=$(cat dist/*.AppImage.tar.gz.sig 2>/dev/null | head -1 || echo "")
-            LINUX_UPD=$(ls dist/*.AppImage.tar.gz | xargs -n1 basename)
-          fi
-          
-          # 构建 JSON（优先 CNB 下载链接）
-          cat > latest.json <<EOF
-          {
-            "version": "$VERSION",
-            "notes": "Skills Manager $VERSION",
-            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-              "darwin-aarch64": {
-                "url": "$CNB_BASE/$MAC_TAR",
-                "signature": "$SIG_MAC"
-              },
-              "windows-x86_64": {
-                "url": "$CNB_BASE/$WIN_UPD",
-                "signature": "$SIG_WIN"
-              },
-              "linux-x86_64": {
-                "url": "$CNB_BASE/$LINUX_UPD",
-                "signature": "$SIG_LINUX"
-              }
-            }
+          import json, os, glob, urllib.parse
+
+          version = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          tag = os.environ["GITHUB_REF_NAME"]
+          base = f"https://cnb.cool/oubuild/skills-manager/-/releases/download/{tag}"
+
+          def find(pattern):
+              files = sorted(glob.glob(f"dist/{pattern}"))
+              return files[0] if files else None
+
+          def entry(artifact_pattern, sig_pattern):
+              art = find(artifact_pattern)
+              if not art:
+                  return None
+              sigs = sorted(glob.glob(f"dist/{sig_pattern}"))
+              sig = ""
+              if sigs:
+                  sig = open(sigs[0]).read().strip().splitlines()[0]
+              name = os.path.basename(art)
+              url = f"{base}/{urllib.parse.quote(name)}"
+              return {"url": url, "signature": sig}
+
+          platforms = {}
+          p = entry("*.app.tar.gz", "*.app.tar.gz.sig")
+          if p:
+              platforms["darwin-aarch64"] = p
+          p = entry("*.msi.zip", "*.msi.zip.sig") or entry("*setup.exe.zip", "*setup.exe.zip.sig") or entry("*.exe.zip", "*.exe.zip.sig")
+          if p:
+              platforms["windows-x86_64"] = p
+          p = entry("*.AppImage.tar.gz", "*.AppImage.tar.gz.sig")
+          if p:
+              platforms["linux-x86_64"] = p
+
+          data = {
+              "version": version,
+              "notes": f"Skills Manager {version}",
+              "pub_date": __import__("datetime").datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "platforms": platforms,
           }
-          EOF
-          cat latest.json
+          with open("latest.json", "w") as f:
+              json.dump(data, f, indent=2)
+          print(json.dumps(data, indent=2))
+          # 校验：生成的文件必须能被严格解析（禁止控制字符）
+          json.loads(open("latest.json").read(), strict=True)
+          print("latest.json OK")
 
       - name: Publish Release
         uses: softprops/action-gh-release@v3
