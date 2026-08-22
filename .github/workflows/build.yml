@@ -139,11 +139,9 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi dist/
-          Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi.zip dist/ -ErrorAction SilentlyContinue
-          Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi.zip.sig dist/ -ErrorAction SilentlyContinue
+          Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi.sig dist/ -ErrorAction SilentlyContinue
           Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe dist/ -ErrorAction SilentlyContinue
-          Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe.zip dist/ -ErrorAction SilentlyContinue
-          Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe.zip.sig dist/ -ErrorAction SilentlyContinue
+          Copy-Item src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe.sig dist/ -ErrorAction SilentlyContinue
           Get-ChildItem dist
 
       - name: Collect artifacts (Linux)
@@ -153,6 +151,7 @@ jobs:
           mkdir -p dist
           cp src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb dist/ 2>/dev/null || true
           cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage dist/ 2>/dev/null || true
+          cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.sig dist/ 2>/dev/null || true
           cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz dist/ 2>/dev/null || true
           cp src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage.tar.gz.sig dist/ 2>/dev/null || true
           ls -la dist/
@@ -205,10 +204,12 @@ jobs:
           p = entry("*.app.tar.gz", "*.app.tar.gz.sig")
           if p:
               platforms["darwin-aarch64"] = p
-          p = entry("*.msi.zip", "*.msi.zip.sig") or entry("*setup.exe.zip", "*setup.exe.zip.sig") or entry("*.exe.zip", "*.exe.zip.sig")
+          # Tauri v2 Windows updater 直接用 NSIS 安装包 + .sig（无 zip 包装）
+          p = entry("*-setup.exe", "*-setup.exe.sig") or entry("*.msi", "*.msi.sig")
           if p:
               platforms["windows-x86_64"] = p
-          p = entry("*.AppImage.tar.gz", "*.AppImage.tar.gz.sig")
+          # Tauri v2 Linux updater 用 AppImage + .sig
+          p = entry("*.AppImage", "*.AppImage.sig") or entry("*.AppImage.tar.gz", "*.AppImage.tar.gz.sig")
           if p:
               platforms["linux-x86_64"] = p
 
