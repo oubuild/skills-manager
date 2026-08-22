@@ -82,6 +82,13 @@ jobs:
           p = "src-tauri/tauri.conf.json"
           conf = json.load(open(p, encoding="utf-8"))
           conf["version"] = v
+          # 同步 updater endpoint 里的版本号（cnb.cool 无 latest 别名，必须版本化路径）
+          eps = conf.get("plugins", {}).get("updater", {}).get("endpoints", [])
+          new_eps = []
+          for ep in eps:
+              new_eps.append(re.sub(r"/download/v[^/]+/latest\.json$", f"/download/v{v}/latest.json", ep))
+          if new_eps:
+              conf["plugins"]["updater"]["endpoints"] = new_eps
           with open(p, "w", encoding="utf-8") as f:
               json.dump(conf, f, indent=2, ensure_ascii=False)
               f.write("\n")
@@ -235,6 +242,14 @@ jobs:
           fail_on_unmatched_files: false
           generate_release_notes: true
 
+      # 把 latest.json 也传成 artifact，供 upload-cnb job 一并上传到 cnb.cool
+      # （cnb.cool 无 latest 动态别名，必须使用版本化路径的 latest.json）
+      - name: Upload latest.json artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: latest-json
+          path: latest.json
+
   # 上传资产到 CNB 国内镜像 Release（国内下载加速）
   # 前置：cnb.cool 存在同名仓库 + .cnb.yml 自动建 Release + GitHub Secrets 配 GIT_PASSWORD
   upload-cnb:
@@ -247,6 +262,18 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+
+      # 确保 latest.json 落在 dist/ 根目录，随安装包一并上传到 cnb.cool
+      - name: Flatten latest.json
+        shell: bash
+        run: |
+          # merge-multiple 可能保留 artifact 子目录，移动到根
+          if [ -f "dist/latest-json/latest.json" ]; then
+            mv -f dist/latest-json/latest.json dist/latest.json
+            rm -rf dist/latest-json
+          fi
+          ls -la dist/
+          test -f dist/latest.json && echo "latest.json ready" || echo "WARN: latest.json missing"
 
       - name: Clone attachments plugin (fork)
         run: git clone --depth 1 https://cnb.cool/ryanuo/attachments.git plugin

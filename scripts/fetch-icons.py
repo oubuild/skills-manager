@@ -24,7 +24,7 @@ PLATFORM_DOMAINS = {
     "augment": "augmentcode.com",
     "opencode": "opencode.ai",
     "kilocode": "kilocode.ai",
-    "ob1": "ob1.ai",
+    "ob1": "overbrilliant.com",
     "amp": "ampcode.com",
     "kiro": "kiro.dev",
     "codebuddy": "codebuddy.ai",

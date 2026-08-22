@@ -151,6 +151,14 @@ createApp({
       return { background: c.bg, color: c.fg };
     };
 
+    // 卡片底部 agent 标签：超出上限折叠为「+N」，hover 浮层看全部
+    const AGENT_CHIPS_MAX = 4;
+    const agentChips = (skill) => {
+      const all = skill.agents || [];
+      if (all.length <= AGENT_CHIPS_MAX) return { shown: all, rest: [], overflow: false };
+      return { shown: all.slice(0, AGENT_CHIPS_MAX), rest: all.slice(AGENT_CHIPS_MAX), overflow: true };
+    };
+
     // ---------- 平台列表：展开全部（默认收起，不持久化，每次打开都收起） ----------
     const showAllPlatforms = ref(false);
     const iconError = ref({});   // favicon 加载失败标记 -> 回退首字母色块
@@ -478,7 +486,7 @@ createApp({
       updateDialog, updateResult, updatingName, updating, doUpdate, openUpdateDialog,
       deleteTarget, deleteAgent, deleteLoading, toast,
       scenes, filtered, stats,
-      selectScene, selectCategory, agentStyle,
+      selectScene, selectCategory, agentStyle, agentChips,
       openDetail, togglePin, toggleState, askDelete, confirmDelete, doInstall, checkUpdates,
       closeDetail: () => detail.value = null,
       closeDelete: () => { deleteTarget.value = null; deleteAgent.value = ''; },
@@ -677,9 +685,16 @@ createApp({
               {{ s.description || '(无描述)' }}
             </p>
             <div class="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t">
-              <span class="flex items-center gap-1">
-                <span v-for="a in s.agents" :key="a" class="agent-pill" :style="agentStyle(a)"
-                      :title="a">{{ a }}</span>
+              <span class="flex items-center gap-1 flex-wrap">
+                <template v-for="a in agentChips(s).shown" :key="a">
+                  <span class="agent-pill" :style="agentStyle(a)" :title="a">{{ a }}</span>
+                </template>
+                <span v-if="agentChips(s).overflow" class="relative group">
+                  <span class="agent-pill" style="background:hsl(var(--muted));color:hsl(var(--muted-foreground));cursor:default;">+{{ agentChips(s).rest.length }}</span>
+                  <span class="hidden group-hover:flex absolute left-0 bottom-full mb-1 z-20 flex-wrap gap-1 p-2 rounded-md border border-border bg-background shadow-lg max-w-[200px]">
+                    <span v-for="a in agentChips(s).rest" :key="a" class="agent-pill" :style="agentStyle(a)" :title="a">{{ a }}</span>
+                  </span>
+                </span>
               </span>
               <span>使用 {{ s.use_count }} 次</span>
             </div>

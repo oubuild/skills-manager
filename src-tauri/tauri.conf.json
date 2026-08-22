@@ -44,7 +44,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM1RjY3MjgwQzI5RjlGOEIKUldTTG41L0NnSEwyeFhDMVRNZmk1UVJuOHM5Y1E0M29tSXdBWURIT2pFVEttUStDN0YvOXB0SzQK",
       "endpoints": [
-        "https://github.com/oubuild/skills-manager/releases/latest/download/latest.json"
+        "https://cnb.cool/ryanuo/skills-manager/-/releases/download/v1.3.0/latest.json"
       ]
     }
   }

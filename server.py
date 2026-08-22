@@ -55,28 +55,62 @@ AGENT_ORDER = [
     ("EasyClaw", ".easyclaw/skills", "Lobster"),
     ("EasyClaw V2", ".easyclaw-20260322-01/skills", "Lobster"),
     ("AutoClaw", ".openclaw-autoclaw/skills", "Lobster"),
-    ("WorkBuddy", ".workbuddy/skills-marketplace/skills", "Lobster"),
+    # WorkBuddy 用户安装的 skill 落盘目录(与 ~/.hermes/skills 对等)
+    ("WorkBuddy", ".workbuddy/skills", "Lobster"),
     ("Central", ".agents/skills", "Central"),
 ]
 
 
-def _resolve_source_dir(name: str, rel: str) -> Path:
-    """Windows 上先探 %LOCALAPPDATA%\\<首段>\\skills，再回退 ~/<rel>；其他平台直接 ~/rel。"""
+# 显式排除的 skills 目录(basename 匹配);用户要求去掉 WorkBuddy 市场缓存
+EXCLUDE_SKILL_DIR_BASENAMES = {"skills-marketplace"}
+
+
+def _resolve_source_roots(name: str, rel: str) -> list:
+    """返回该 agent 所有应扫描的 skills 根目录(list[Path])。
+
+    - 含精确 rel 目录(若存在)
+    - 含 rel 父目录下所有以 basename(rel) 为前缀的子目录(模糊匹配 skills*)
+      → 自动适配不同布局，如 .cursor/skills、.cursor/skills-xxx 都能命中
+    - Windows 上额外探 %LOCALAPPDATA%\\<首段>\\skills
+    - 自动跳过不存在的目录与 EXCLUDE 列表
+    """
     first_seg = rel.split("/")[0]
+    skill_name = rel.rsplit("/", 1)[-1]          # 通常 'skills'
+    parent_rel = rel.rsplit("/", 1)[0] if "/" in rel else ""
+    candidates = [HOME / rel]
     local = os.environ.get("LOCALAPPDATA")
     if sys.platform == "win32" and local:
-        cand = Path(local) / first_seg / "skills"
-        if cand.is_dir():
-            return cand
-    return HOME / rel
+        candidates.append(Path(local) / first_seg / "skills")
+    parent = HOME / parent_rel if parent_rel else HOME
+    try:
+        for sub in parent.iterdir():
+            if sub.is_dir() and sub.name.startswith(skill_name) \
+                    and sub.name not in EXCLUDE_SKILL_DIR_BASENAMES:
+                candidates.append(sub)
+    except (PermissionError, FileNotFoundError):
+        pass
+    seen, roots = set(), []
+    for c in candidates:
+        try:
+            rp = c.resolve()
+        except Exception:
+            continue
+        if rp in seen:
+            continue
+        seen.add(rp)
+        if rp.name in EXCLUDE_SKILL_DIR_BASENAMES:
+            continue
+        if rp.is_dir():
+            roots.append(rp)
+    return roots
 
 
-SOURCES = {name: _resolve_source_dir(name, rel) for name, rel, _group in AGENT_ORDER}
+SOURCES = {name: _resolve_source_roots(name, rel) for name, rel, _group in AGENT_ORDER}
 SOURCE_GROUPS = {name: group for name, _rel, group in AGENT_ORDER}
 AGENT_NAMES = [name for name, _rel, _group in AGENT_ORDER]
-ACTIVE_SOURCES = {a: p for a, p in SOURCES.items() if p.is_dir()}
+ACTIVE_SOURCES = {a: roots for a, roots in SOURCES.items() if roots}
 
-USAGE_FILE = SOURCES["Hermes"] / ".usage.json"
+USAGE_FILE = (SOURCES["Hermes"][0] if SOURCES["Hermes"] else HOME / ".hermes/skills") / ".usage.json"
 STATIC_DIR = Path(__file__).parent / "static"
 PORT = int(os.environ.get("SKILLS_MANAGER_PORT", "8080"))
 
@@ -210,20 +244,21 @@ def collect_skills():
     usage = load_usage()
 
     groups = {}  # resolved_path -> [entry...]
-    for agent, root in ACTIVE_SOURCES.items():
-        raw = []
-        walk_source(root, raw)
-        for d, category in raw:
-            try:
-                resolved = d.resolve()
-            except Exception:
-                continue
-            groups.setdefault(resolved, []).append({
-                "agent": agent,
-                "path": d,
-                "is_symlink": d.is_symlink(),
-                "category": category,
-            })
+    for agent, roots in ACTIVE_SOURCES.items():
+        for root in roots:
+            raw = []
+            walk_source(root, raw)
+            for d, category in raw:
+                try:
+                    resolved = d.resolve()
+                except Exception:
+                    continue
+                groups.setdefault(resolved, []).append({
+                    "agent": agent,
+                    "path": d,
+                    "is_symlink": d.is_symlink(),
+                    "category": category,
+                })
 
     items = []
     for resolved, group in groups.items():
@@ -232,12 +267,13 @@ def collect_skills():
 
     sources_info = []
     for agent, _rel, group in AGENT_ORDER:
-        installed = agent in ACTIVE_SOURCES
+        roots = ACTIVE_SOURCES.get(agent, [])
+        installed = bool(roots)
         sources_info.append({
             "agent": agent,
             "icon": agent.lower().replace(" ", "-"),
             "group": group,
-            "root": str(ACTIVE_SOURCES.get(agent, "")),
+            "root": ";".join(str(r) for r in roots),
             "installed": installed,
             # 未安装平台 count 恒为 0
             "count": sum(1 for it in items if agent in it["agents"]) if installed else 0,
@@ -310,7 +346,7 @@ def find_item(skill_id):
     # 安全检查：真身必须落在某个已注册源的树内
     try:
         rp = resolved.resolve()
-        if not any(str(rp).startswith(str(root.resolve())) for root in ACTIVE_SOURCES.values()):
+        if not any(str(rp).startswith(str(r.resolve())) for roots in ACTIVE_SOURCES.values() for r in roots):
             return None, None
     except Exception:
         return None, None
@@ -319,10 +355,11 @@ def find_item(skill_id):
     cli_map, _ = hermes_skills_list()
     usage = load_usage()
     group = []
-    for agent, root in ACTIVE_SOURCES.items():
-        # 在各源中找指向该真身的条目
-        raw = []
-        walk_source(root, raw)
+    for agent, roots in ACTIVE_SOURCES.items():
+        for root in roots:
+            # 在各源中找指向该真身的条目
+            raw = []
+            walk_source(root, raw)
         for d, category in raw:
             try:
                 if d.resolve() == rp:
@@ -564,7 +601,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(404, "skill not found")
         if agent in item["agents"]:
             return self._error(400, f"该 skill 已存在于 {agent}")
-        root = ACTIVE_SOURCES[agent]
+        root = ACTIVE_SOURCES[agent][0]
         target = root / item["dir_name"]
         if target.exists() or target.is_symlink():
             return self._error(400, f"{target} 已存在，无法创建软链")
@@ -630,8 +667,9 @@ def main():
     STATIC_DIR.mkdir(exist_ok=True)
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"✦ Skills Manager 已启动: http://127.0.0.1:{PORT}")
-    for agent, root in ACTIVE_SOURCES.items():
-        print(f"  [{agent}] {root}")
+    for agent, roots in ACTIVE_SOURCES.items():
+        for root in roots:
+            print(f"  [{agent}] {root}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
