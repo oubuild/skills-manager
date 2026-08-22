@@ -153,6 +153,7 @@ createApp({
 
     // ---------- 平台列表：展开全部（默认收起，不持久化，每次打开都收起） ----------
     const showAllPlatforms = ref(false);
+    const iconError = ref({});   // favicon 加载失败标记 -> 回退首字母色块
     function toggleShowAllPlatforms() {
       showAllPlatforms.value = !showAllPlatforms.value;
     }
@@ -486,7 +487,7 @@ createApp({
       checkAppUpdate, installAppUpdate,
       isDark, toggleTheme, appVersion,
       showAllPlatforms, toggleShowAllPlatforms,
-      visiblePlatforms, platformInitial, installedCount,
+      visiblePlatforms, platformInitial, installedCount, iconError,
       SCENE_ICONS,
     };
   },
@@ -537,21 +538,26 @@ createApp({
            全部
          </button>
          <div class="space-y-1 mb-3">
-           <button v-for="src in visiblePlatforms" :key="src.agent"
-             class="w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2"
-             :class="[
-               activeAgents.includes(src.agent) ? 'bg-secondary font-medium' : 'hover:bg-secondary/60',
-               src.count === 0 ? 'opacity-50' : ''
-             ]"
-             :title="src.count === 0 ? '未检测到该平台或暂无 skills' : ''"
-             @click="toggleAgent(src.agent)">
-             <!-- 图标：首字母圆角色块 -->
-             <span class="shrink-0 inline-flex items-center justify-center rounded w-4 h-4 text-[9px] font-bold text-white"
-                   :style="{ background: agentStyle(src.agent).background }">{{ platformInitial(src.icon) }}</span>
-             <span class="truncate">{{ src.agent }}</span>
-             <span class="ml-auto text-xs shrink-0"
-                   :class="src.count > 0 ? 'text-muted-foreground' : 'text-muted-foreground/50'">{{ src.count }}</span>
-           </button>
+            <button v-for="src in visiblePlatforms" :key="src.agent"
+              class="w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2"
+              :class="[
+                activeAgents.includes(src.agent) ? 'bg-secondary font-medium' : 'hover:bg-secondary/60',
+                src.count === 0 ? 'opacity-50' : ''
+              ]"
+              :title="src.count === 0 ? '未检测到该平台或暂无 skills' : ''"
+              @click="toggleAgent(src.agent)">
+              <!-- 图标：本地 favicon，加载失败回退首字母色块 -->
+              <img v-if="iconError[src.icon] === undefined || !iconError[src.icon]"
+                   :src="'./icons/' + src.icon + '.png'"
+                   class="shrink-0 w-4 h-4 rounded-sm"
+                   @error="iconError[src.icon] = true" />
+              <span v-else
+                    class="shrink-0 inline-flex items-center justify-center rounded w-4 h-4 text-[9px] font-bold text-white"
+                    :style="{ background: agentStyle(src.agent).background }">{{ platformInitial(src.icon) }}</span>
+              <span class="truncate">{{ src.agent }}</span>
+              <span class="ml-auto text-xs shrink-0"
+                    :class="src.count > 0 ? 'text-muted-foreground' : 'text-muted-foreground/50'">{{ src.count }}</span>
+            </button>
          </div>
         <div class="text-xs font-medium text-muted-foreground mb-2 px-2">场景分类</div>
         <button
