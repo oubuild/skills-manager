@@ -6,6 +6,8 @@
 
 <p align="center">本地统一管理多个 AI Agent 的 skills：浏览、搜索、按 agent/场景筛选、启停、固定、安装、链接、删除、检查更新。</p>
 
+![](./static/preview.png)
+
 ## 启动
 
 **桌面应用（Tauri）：**
