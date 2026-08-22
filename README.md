@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" width="120" alt="Skills Manager logo" />
+  <img src="static/logo.png" width="120" alt="Skills Manager logo" />
 </p>
 
 <h1 align="center">Skills Manager</h1>

@@ -12,7 +12,8 @@
     "dev": "pnpm build:css && pnpm build:ota && tauri dev",
     "build": "pnpm build:css && pnpm build:ota && tauri build",
     "tauri": "tauri",
-    "release": "bumpp --commit \"chore: release {tag}\" --tag \"{version}\" --push"
+    "release": "bumpp --commit \"chore: release {tag}\" --tag \"{version}\" --push",
+    "icon:platform": "python3 scripts/fetch-icon.py"
   },
   "repository": {
     "type": "git",
